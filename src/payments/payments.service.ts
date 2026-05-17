@@ -203,7 +203,7 @@ export class PaymentsService {
       `Your payment for order #${order.orderNumber} was successful! Your order is being prepared.`,
       'ORDER_UPDATE' as any,
       { orderId: order.id, orderNumber: order.orderNumber },
-    ).catch(() => {});
+    ).catch(() => { });
 
     return { message: 'Payment verified successfully', data: { orderId: order.id } };
   }

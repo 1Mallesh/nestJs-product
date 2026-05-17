@@ -292,3 +292,4 @@ Supabase (managed PostgreSQL) is used. Run migrations in production:
 ```bash
 npx prisma migrate deploy
 ```
+![alt text](image.png)
