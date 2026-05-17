@@ -1,5 +1,9 @@
-﻿import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller, Post, Get, Body, Param, UseGuards,
+  Headers, RawBodyRequest, Req,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { Request } from 'express';
 import { Role } from '@prisma/client';
 import { PaymentsService } from './payments.service';
 import { CreateRazorpayOrderDto, VerifyPaymentDto, RefundDto } from './dto/payment.dto';
@@ -7,6 +11,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('Payments')
 @ApiBearerAuth('JWT-auth')
@@ -39,5 +44,17 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Process refund (Admin)' })
   processRefund(@Body() dto: RefundDto) {
     return this.paymentsService.processRefund(dto);
+  }
+
+  // Public endpoint — bypasses JWT, reads raw body for HMAC verification
+  @Public()
+  @Post('webhook/razorpay')
+  @ApiExcludeEndpoint()
+  handleRazorpayWebhook(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-razorpay-signature') signature: string,
+  ) {
+    const rawBody = req.rawBody ?? Buffer.from('');
+    return this.paymentsService.handleWebhook(rawBody, signature);
   }
 }

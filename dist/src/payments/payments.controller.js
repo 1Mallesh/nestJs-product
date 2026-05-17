@@ -17,6 +17,7 @@ const _jwtauthguard = require("../auth/guards/jwt-auth.guard");
 const _rolesguard = require("../common/guards/roles.guard");
 const _rolesdecorator = require("../common/decorators/roles.decorator");
 const _currentuserdecorator = require("../common/decorators/current-user.decorator");
+const _publicdecorator = require("../common/decorators/public.decorator");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -43,6 +44,11 @@ let PaymentsController = class PaymentsController {
     }
     processRefund(dto) {
         return this.paymentsService.processRefund(dto);
+    }
+    // Public endpoint — bypasses JWT, reads raw body for HMAC verification
+    handleRazorpayWebhook(req, signature) {
+        const rawBody = req.rawBody ?? Buffer.from('');
+        return this.paymentsService.handleWebhook(rawBody, signature);
     }
     constructor(paymentsService){
         this.paymentsService = paymentsService;
@@ -100,6 +106,19 @@ _ts_decorate([
     ]),
     _ts_metadata("design:returntype", void 0)
 ], PaymentsController.prototype, "processRefund", null);
+_ts_decorate([
+    (0, _publicdecorator.Public)(),
+    (0, _common.Post)('webhook/razorpay'),
+    (0, _swagger.ApiExcludeEndpoint)(),
+    _ts_param(0, (0, _common.Req)()),
+    _ts_param(1, (0, _common.Headers)('x-razorpay-signature')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        typeof _common.RawBodyRequest === "undefined" ? Object : _common.RawBodyRequest,
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], PaymentsController.prototype, "handleRazorpayWebhook", null);
 PaymentsController = _ts_decorate([
     (0, _swagger.ApiTags)('Payments'),
     (0, _swagger.ApiBearerAuth)('JWT-auth'),
