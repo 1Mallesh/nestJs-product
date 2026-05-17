@@ -1,0 +1,203 @@
+# TOKOMORT Complete Backend System Architecture & Verification Analysis
+*Enterprise-Grade Review & Architectural Blueprint*
+
+This document provides a comprehensive end-to-end verification, architecture analysis, and production operational blueprint of the **TOKOMORT** multi-vendor e-commerce backend platform. This system is designed on top of **NestJS**, **Prisma**, **PostgreSQL (Supabase)**, **Razorpay**, and **Socket.IO** to support highly scaleable and robust logistics, payment, and settlement flows akin to Amazon, Flipkart, Swiggy, and Blinkit.
+
+---
+
+## 1. Project Overview & High-Level Architecture
+
+TOKOMORT is a production-ready, hyper-local, and national multi-vendor e-commerce marketplace. The system balances hybrid logistics fulfillment: local orders are assigned automatically to delivery boys within GPS range using active WebSocket streams, while remote national orders route through automated **Shiprocket** integrations.
+
+```mermaid
+graph TD
+    User([Customer Web App]) -->|HTTP REST| API[NestJS API Gateway]
+    User -->|WebSockets| Socket[Socket.IO Gateway]
+    Rider([Delivery Boy App]) -->|WebSockets / REST| Socket
+    Rider -->|REST| API
+    Vendor([Vendor Dashboard]) -->|REST| API
+    Admin([Admin Portal]) -->|REST| API
+
+    API -->|ORM| Prisma[Prisma Engine]
+    Prisma -->|Query| DB[(PostgreSQL / Supabase)]
+    API -->|Payments API| Razorpay[Razorpay Gateway]
+    API -->|Webhook Trigger| Razorpay
+```
+
+---
+
+## 2. Backend Architecture (Modules, Services, & Guards)
+
+The NestJS backend strictly follows modular architecture guidelines, isolating domains while using clear cross-module imports.
+
+### A. Core Modules Structure
+*   **`AuthModule`**: Manages secure user signup/login, password hashing via bcrypt, and double-token JWT issuance (Access + Refresh token).
+*   **`UsersModule`**: Handles user profiles and delivery address management. Addresses are geocoded using physical `latitude` and `longitude`.
+*   **`ProductsModule`**: Manages categories and vendor product creation. Leverages in-memory caching for featured products.
+*   **`OrdersModule`**: Coordinates shopping carts, checkout validation, stock reduction, and invoice/receipt generation.
+*   **`PaymentsModule`**: Directly interfaces with Razorpay to create orders, verify payment signatures, and handle asynchronous webhook events.
+*   **`DeliveryModule`**: Manages delivery boy status, OTP generation/validation for delivery handshakes, and coordinates live GPS tracking.
+*   **`TrackingModule`**: Connects Socket.IO gateways to coordinate real-time coordinates, status changes, and notifications.
+*   **`NotificationsModule`**: Dispatches persistent notifications in the PostgreSQL database alongside WebSocket pushing.
+
+### B. Route Protection System (Guards)
+Access is guarded by a two-tier verification layer:
+1.  **`JwtAuthGuard`**: Decodes and verifies the `Authorization: Bearer <JWT>` header, extracting the payload and assigning the validated user to the request context.
+2.  **`RolesGuard`**: A custom reflection-based guard that reads role metadata (e.g., `Role.ADMIN`, `Role.VENDOR`, `Role.DELIVERY_BOY`) and matches it against the verified user's database role.
+
+---
+
+## 3. Database Schema Verification
+
+The schema is built on **PostgreSQL** using **Prisma ORM**. All database relationships are mapped with strict foreign key constraints and automated cascade rules.
+
+```prisma
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  phone           String         @unique
+  password        String
+  role            Role           @default(CUSTOMER)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  
+  vendor          Vendor?
+  deliveryBoy     DeliveryBoy?
+  addresses       Address[]
+  orders          Order[]
+  notifications   Notification[]
+}
+
+model Vendor {
+  id                String         @id @default(uuid())
+  userId            String         @unique
+  shopName          String
+  commissionRate    Float          @default(10.0)
+  totalEarnings     Float          @default(0)
+  approvalStatus    ApprovalStatus @default(PENDING)
+  
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products          Product[]
+  settlements       VendorSettlement[]
+  commissions       Commission[]
+}
+
+model DeliveryBoy {
+  id                String         @id @default(uuid())
+  userId            String         @unique
+  approvalStatus    ApprovalStatus @default(PENDING)
+  isAvailable       Boolean        @default(true)
+  currentLatitude   Float?
+  currentLongitude  Float?
+  totalDeliveries   Int            @default(0)
+  totalEarnings     Float          @default(0)
+  
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries        OrderDelivery[]
+}
+
+model Order {
+  id                   String             @id @default(uuid())
+  userId               String
+  addressId            String
+  orderNumber          String             @unique
+  status               OrderStatus        @default(PENDING)
+  paymentStatus        PaymentStatus      @default(PENDING)
+  subtotal             Float
+  shippingCharge       Float              @default(0)
+  discount             Float              @default(0)
+  totalAmount          Float
+  deliveryType         DeliveryType       @default(LOCAL)
+  createdAt            DateTime           @default(now())
+  
+  user                 User               @relation(fields: [userId], references: [id])
+  address              Address            @relation(fields: [addressId], references: [id])
+  items                OrderItem[]
+  payment              Payment?
+  delivery             OrderDelivery?
+  tracking             DeliveryTracking[]
+}
+```
+
+---
+
+## 4. End-to-End System Flows
+
+### A. Authentication & Onboarding Flow
+1.  **Role Separation:** Unique constraints prevent duplicate Vendor or Delivery Boy profile creation per verified User ID.
+2.  **Access Tokens:** Access JWT expires in 15 minutes; Refresh JWT is stored inside HTTP-Only secure cookies and expires in 7 days for seamless token rotation.
+
+### B. Product Lifecycle & Approval Flow
+```mermaid
+sequenceDiagram
+    participant Vendor
+    participant Admin
+    participant Storefront
+    Vendor->>Backend: POST /products (Create as PENDING)
+    Backend->>Admin: Emit WebSocket (Product Created Event)
+    Admin->>Backend: PATCH /admin/products/:id/approve
+    Backend->>Backend: Update status to APPROVED, cache cleared
+    Backend->>Storefront: Stream Realtime Socket Update
+```
+
+### C. Checkout & Payment Flow (Razorpay Integration)
+1.  **Pre-authorization:** Cart items validate stock level and calculate total price.
+2.  **Order Generation:** Frontend calls `/payments/razorpay/order`. A temporary order is locked in the DB, and a `razorpayOrderId` is requested from Razorpay.
+3.  **Signature Verification:** Once customer completes the Razorpay modal, the frontend sends payload containing `razorpayOrderId`, `razorpayPaymentId`, and `razorpaySignature` to `/payments/verify`. The backend verifies the SHA256 HMAC signature using the local secret.
+
+### D. Automated Delivery Assignment (GPS Nearest)
+Upon payment confirmation, for orders marked as `LOCAL` delivery, the system initiates the **Auto-Assignment Loop**:
+1.  **Haversine Distance Filter:** The system queries all `APPROVED` and `isAvailable: true` delivery agents. For each agent online with active coordinates, it calculates the geographic distance:
+    $$d = 2R \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta \text{lat}}{2}\right) + \cos(\text{lat}_1)\cos(\text{lat}_2)\sin^2\left(\frac{\Delta \text{lon}}{2}\right)}\right)$$
+2.  **Fallback:** If no online courier possesses valid coordinates, it falls back to the **least-loaded** courier (`orderBy: { totalDeliveries: 'asc' }`).
+3.  **Notification:** Dispatches real-time Socket notification to the assigned courier's device.
+
+---
+
+## 5. Automated Financial Settlement System
+
+When an order is updated to `DELIVERED`, the system triggers `processSettlementsAndPayouts` inside a database transaction:
+
+| Financial Element | Formula / Logic Applied | Destination Table |
+| :--- | :--- | :--- |
+| **Gross GST** | Calculated as inclusive 18% tax: $GST = Subtotal - \frac{Subtotal}{1.18}$ | `GstTransaction` |
+| **Platform Commission** | $Gross \times \frac{Vendor.commissionRate}{100}$ | `Commission` |
+| **GST on Commission** | Platform owes 18% tax on commission income: $Commission \times 0.18$ | `Commission` |
+| **Delivery Boy Earning** | Flat incentive payout of ₹50.00 | `DeliveryPayout` |
+| **Vendor Settlement** | Net payment sent to seller: $Gross - (Commission + GST\ on\ Commission)$ | `VendorSettlement` |
+
+---
+
+## 6. Realtime Socket.IO Events Reference
+
+| Event Name | Namespace | Target | Payload Contents | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `order.created` | `/tracking` | Admin / Vendors | `orderId`, `orderNumber`, `totalAmount` | Sent instantly when cart converts to order. |
+| `delivery.assigned` | `/tracking` | Delivery Boy | `orderNumber`, `orderId`, `pickupLocation` | Pushes popup onto the courier's screen. |
+| `location.updated` | `/tracking` | Customer | `latitude`, `longitude`, `bearing` | Streams moving coordinates across the active map. |
+| `settlement.created` | `/tracking` | Admin Dashboard | `orderId`, `totalAmount`, `payout` | Reconciles real-time revenue stats. |
+
+---
+
+## 7. Operational Blueprints & Operational Checklists
+
+### Production Checklist
+- [ ] Set `NODE_ENV=production` inside environment configuration.
+- [ ] Configure PostgreSQL Connection Pool size (`?connection_limit=20` inside Supabase database URI).
+- [ ] Store secure Razorpay live secret keys inside vault.
+- [ ] Set SSL connections strictly for PostgreSQL connections.
+- [ ] Enable CORS restrictions to match your secure frontend origin domain.
+
+### Security Checklist
+- [ ] Wrap API responses using class serializers to prevent exposing password hashes.
+- [ ] Set up secure `helmet` middleware for REST responses.
+- [ ] Set rate-limiting rules (`nestjs/throttler`) to limit high-frequency endpoint requests.
+- [ ] Set cookie options as `secure: true, httpOnly: true, sameSite: 'strict'` for secure token verification.
+
+---
+
+## 8. Missing Features & Recommended Improvements
+1.  **Redis Cache Integration:** Replace the in-memory cache map with an external **Redis** store to support distributed multi-node server scaling.
+2.  **Bulk File Upload:** Move local multer uploads to secure AWS S3 / Cloudflare R2 bucket signed URLs.
+3.  **Advanced Geofencing:** Establish precise shipping zone geofencing (polygons) instead of radial circles to limit courier assignments to specific neighborhoods.
