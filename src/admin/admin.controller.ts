@@ -105,6 +105,24 @@ export class AdminController {
     return this.adminService.assignDeliveryBoy(orderId, deliveryBoyId);
   }
 
+  @Patch('orders/:orderId/delivery-type')
+  @ApiOperation({ summary: 'Update delivery type of an order' })
+  updateDeliveryType(
+    @Param('orderId') orderId: string,
+    @Body('deliveryType') deliveryType: 'LOCAL' | 'SHIPROCKET',
+  ) {
+    return this.adminService.updateDeliveryType(orderId, deliveryType);
+  }
+
+  @Post('orders/:orderId/shiprocket-ship')
+  @ApiOperation({ summary: 'Trigger Shiprocket order creation' })
+  shipWithShiprocket(
+    @Param('orderId') orderId: string,
+  ) {
+    return this.adminService.shipWithShiprocket(orderId);
+  }
+
+
   // Delivery Boy endpoints
   @Get('delivery-boys')
   @ApiOperation({ summary: 'Get all delivery boys' })

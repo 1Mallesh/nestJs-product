@@ -63,6 +63,12 @@ let AdminController = class AdminController {
     assignDelivery(orderId, deliveryBoyId) {
         return this.adminService.assignDeliveryBoy(orderId, deliveryBoyId);
     }
+    updateDeliveryType(orderId, deliveryType) {
+        return this.adminService.updateDeliveryType(orderId, deliveryType);
+    }
+    shipWithShiprocket(orderId) {
+        return this.adminService.shipWithShiprocket(orderId);
+    }
     // Delivery Boy endpoints
     getDeliveryBoys(page, limit, status) {
         return this.adminService.getDeliveryBoys(page, limit, status);
@@ -222,6 +228,32 @@ _ts_decorate([
     ]),
     _ts_metadata("design:returntype", void 0)
 ], AdminController.prototype, "assignDelivery", null);
+_ts_decorate([
+    (0, _common.Patch)('orders/:orderId/delivery-type'),
+    (0, _swagger.ApiOperation)({
+        summary: 'Update delivery type of an order'
+    }),
+    _ts_param(0, (0, _common.Param)('orderId')),
+    _ts_param(1, (0, _common.Body)('deliveryType')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String,
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], AdminController.prototype, "updateDeliveryType", null);
+_ts_decorate([
+    (0, _common.Post)('orders/:orderId/shiprocket-ship'),
+    (0, _swagger.ApiOperation)({
+        summary: 'Trigger Shiprocket order creation'
+    }),
+    _ts_param(0, (0, _common.Param)('orderId')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], AdminController.prototype, "shipWithShiprocket", null);
 _ts_decorate([
     (0, _common.Get)('delivery-boys'),
     (0, _swagger.ApiOperation)({

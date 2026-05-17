@@ -218,8 +218,8 @@ let OrdersService = class OrdersService {
             paymentMethod: dto.paymentMethod,
             userId
         });
-        // 9b. Auto-assign delivery boy for COD orders immediately
-        if (dto.paymentMethod === 'COD') {
+        // 9b. Auto-assign delivery boy for COD orders immediately if local delivery
+        if (dto.paymentMethod === 'COD' && deliveryType === 'LOCAL') {
             try {
                 let availableBoy = null;
                 if (address && address.latitude && address.longitude) {
@@ -735,9 +735,21 @@ let OrdersService = class OrdersService {
             }
         });
         if (!order) throw new _common.NotFoundException('Order not found');
+        let shiprocketTracking = null;
+        if (order.deliveryType === 'SHIPROCKET' && order.awbCode) {
+            try {
+                const trackingRes = await this.shippingService.trackShiprocket(order.awbCode);
+                shiprocketTracking = trackingRes;
+            } catch (err) {
+                this.logger.warn(`Failed to fetch live Shiprocket tracking for AWB ${order.awbCode}: ${err.message}`);
+            }
+        }
         return {
             message: 'Order tracking fetched',
-            data: order
+            data: {
+                ...order,
+                shiprocketTracking
+            }
         };
     }
     calculateDistance(lat1, lon1, lat2, lon2) {

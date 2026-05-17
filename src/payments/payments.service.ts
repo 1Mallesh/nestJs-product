@@ -127,65 +127,69 @@ export class PaymentsService {
     });
 
     // ── Auto-assign nearest available delivery boy ───────────────────────────
-    try {
-      let availableBoy = null;
+    if (order.deliveryType === 'LOCAL') {
+      try {
+        let availableBoy = null;
 
-      // If customer address has GPS coordinates, find the closest one
-      if (order.address && order.address.latitude && order.address.longitude) {
-        const boys = await this.prisma.deliveryBoy.findMany({
-          where: { approvalStatus: 'APPROVED', isAvailable: true },
-        });
+        // If customer address has GPS coordinates, find the closest one
+        if (order.address && order.address.latitude && order.address.longitude) {
+          const boys = await this.prisma.deliveryBoy.findMany({
+            where: { approvalStatus: 'APPROVED', isAvailable: true },
+          });
 
-        let minDistance = Infinity;
-        for (const boy of boys) {
-          if (boy.currentLatitude && boy.currentLongitude) {
-            const distance = this.calculateDistance(
-              order.address.latitude,
-              order.address.longitude,
-              boy.currentLatitude,
-              boy.currentLongitude,
-            );
-            if (distance < minDistance) {
-              minDistance = distance;
-              availableBoy = boy;
+          let minDistance = Infinity;
+          for (const boy of boys) {
+            if (boy.currentLatitude && boy.currentLongitude) {
+              const distance = this.calculateDistance(
+                order.address.latitude,
+                order.address.longitude,
+                boy.currentLatitude,
+                boy.currentLongitude,
+              );
+              if (distance < minDistance) {
+                minDistance = distance;
+                availableBoy = boy;
+              }
             }
           }
         }
+
+        // Fallback: If no boy found via GPS, get the least-loaded one
+        if (!availableBoy) {
+          availableBoy = await this.prisma.deliveryBoy.findFirst({
+            where: { approvalStatus: 'APPROVED', isAvailable: true },
+            orderBy: { totalDeliveries: 'asc' },
+          });
+        }
+
+        if (availableBoy) {
+          await this.prisma.orderDelivery.upsert({
+            where: { orderId: order.id },
+            create: { orderId: order.id, deliveryBoyId: availableBoy.id, assignedAt: new Date() },
+            update: { deliveryBoyId: availableBoy.id, assignedAt: new Date() },
+          });
+
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: { status: 'CONFIRMED' },
+          });
+
+          // Notify the delivery boy
+          this.trackingGateway.emitNotification(availableBoy.userId, {
+            title: 'New Delivery Assigned 🚲',
+            message: `Order #${order.orderNumber} has been assigned to you. Please pick up immediately.`,
+            orderNumber: order.orderNumber,
+            orderId: order.id,
+          });
+
+          this.trackingGateway.emitOrderStatusUpdate(order.id, 'CONFIRMED');
+          this.logger.log(`[verifyPayment] Auto-assigned order ${order.orderNumber} to delivery boy ${availableBoy.id}`);
+        }
+      } catch (err: any) {
+        this.logger.warn(`[verifyPayment] Auto-assignment failed: ${err.message}`);
       }
-
-      // Fallback: If no boy found via GPS, get the least-loaded one
-      if (!availableBoy) {
-        availableBoy = await this.prisma.deliveryBoy.findFirst({
-          where: { approvalStatus: 'APPROVED', isAvailable: true },
-          orderBy: { totalDeliveries: 'asc' },
-        });
-      }
-
-      if (availableBoy) {
-        await this.prisma.orderDelivery.upsert({
-          where: { orderId: order.id },
-          create: { orderId: order.id, deliveryBoyId: availableBoy.id, assignedAt: new Date() },
-          update: { deliveryBoyId: availableBoy.id, assignedAt: new Date() },
-        });
-
-        await this.prisma.order.update({
-          where: { id: order.id },
-          data: { status: 'CONFIRMED' },
-        });
-
-        // Notify the delivery boy
-        this.trackingGateway.emitNotification(availableBoy.userId, {
-          title: 'New Delivery Assigned 🚲',
-          message: `Order #${order.orderNumber} has been assigned to you. Please pick up immediately.`,
-          orderNumber: order.orderNumber,
-          orderId: order.id,
-        });
-
-        this.trackingGateway.emitOrderStatusUpdate(order.id, 'CONFIRMED');
-        this.logger.log(`[verifyPayment] Auto-assigned order ${order.orderNumber} to delivery boy ${availableBoy.id}`);
-      }
-    } catch (err: any) {
-      this.logger.warn(`[verifyPayment] Auto-assignment failed: ${err.message}`);
+    } else {
+      this.logger.log(`[verifyPayment] Order ${order.orderNumber} is marked for ${order.deliveryType} — skipping local delivery boy assignment`);
     }
 
     // Emit real-time payment confirmed update
@@ -260,7 +264,7 @@ export class PaymentsService {
 
     // Idempotency: skip if already processed
     const alreadyProcessed = await this.prisma.payment.findFirst({
-      where: { webhookEventId },
+      where: { webhookEventId } as any,
     });
     if (alreadyProcessed) {
       this.logger.log(`Webhook ${webhookEventId} already processed — skipping`);
@@ -279,7 +283,7 @@ export class PaymentsService {
       this.logger.log(`Payment ${payment.id} already PAID — marking idempotency only`);
       await this.prisma.payment.update({
         where: { id: payment.id },
-        data: { webhookEventId },
+        data: { webhookEventId } as any,
       });
       return;
     }
@@ -343,7 +347,7 @@ export class PaymentsService {
           status: 'PAID',
           method: payload.method,
           webhookEventId,
-        },
+        } as any,
       });
 
       // 2. Confirm order
@@ -450,7 +454,7 @@ export class PaymentsService {
     if (!payment) return;
 
     // Idempotency
-    if (payment.webhookEventId === webhookEventId) return;
+    if ((payment as any).webhookEventId === webhookEventId) return;
 
     const order = await this.prisma.order.findUnique({
       where: { id: payment.orderId },
@@ -460,7 +464,7 @@ export class PaymentsService {
     await this.prisma.$transaction(async (tx: any) => {
       await tx.payment.update({
         where: { id: payment.id },
-        data: { status: 'FAILED', failureReason, webhookEventId },
+        data: { status: 'FAILED', failureReason, webhookEventId } as any,
       });
 
       await tx.order.update({
