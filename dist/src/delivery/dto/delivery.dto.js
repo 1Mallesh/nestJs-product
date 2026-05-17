@@ -120,5 +120,18 @@ _ts_decorate([
     (0, _classvalidator.IsString)(),
     _ts_metadata("design:type", String)
 ], UpdateDeliveryStatusDto.prototype, "notes", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    (0, _classvalidator.Length)(4, 4),
+    _ts_metadata("design:type", String)
+], UpdateDeliveryStatusDto.prototype, "otp", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], UpdateDeliveryStatusDto.prototype, "proofImageUrl", void 0);
 
 //# sourceMappingURL=delivery.dto.js.map

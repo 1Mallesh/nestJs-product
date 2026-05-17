@@ -217,6 +217,7 @@ let PaymentsService = class PaymentsService {
                     });
                 }
                 if (availableBoy) {
+                    const otp = Math.floor(1000 + Math.random() * 9000).toString();
                     await this.prisma.orderDelivery.upsert({
                         where: {
                             orderId: order.id
@@ -224,11 +225,13 @@ let PaymentsService = class PaymentsService {
                         create: {
                             orderId: order.id,
                             deliveryBoyId: availableBoy.id,
-                            assignedAt: new Date()
+                            assignedAt: new Date(),
+                            deliveryOtp: otp
                         },
                         update: {
                             deliveryBoyId: availableBoy.id,
-                            assignedAt: new Date()
+                            assignedAt: new Date(),
+                            deliveryOtp: otp
                         }
                     });
                     await this.prisma.order.update({

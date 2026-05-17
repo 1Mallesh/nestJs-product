@@ -172,6 +172,13 @@ let DeliveryService = class DeliveryService {
             updateData.pickedUpAt = new Date();
             orderStatus = 'OUT_FOR_DELIVERY';
         } else if (dto.action === 'DELIVERED') {
+            if (!dto.otp) throw new _common.BadRequestException('OTP is required for delivery');
+            if (delivery.deliveryOtp && delivery.deliveryOtp !== dto.otp) {
+                throw new _common.BadRequestException('Invalid OTP. Please ask the customer for the correct 4-digit PIN.');
+            }
+            if (dto.proofImageUrl) {
+                updateData.proofImageUrl = dto.proofImageUrl;
+            }
             updateData.deliveredAt = new Date();
             orderStatus = 'DELIVERED';
             await this.prisma.deliveryBoy.update({

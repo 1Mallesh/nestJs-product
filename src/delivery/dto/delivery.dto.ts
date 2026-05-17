@@ -65,4 +65,15 @@ export class UpdateDeliveryStatusDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(4, 4)
+  otp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  proofImageUrl?: string;
 }

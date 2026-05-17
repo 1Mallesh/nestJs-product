@@ -404,6 +404,8 @@ model OrderDelivery {
   assignedAt    DateTime?
   pickedUpAt    DateTime?
   deliveredAt   DateTime?
+  deliveryOtp   String?
+  proofImageUrl String?
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
