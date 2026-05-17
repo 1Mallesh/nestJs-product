@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller, Get, Post, Patch, Body, Param, Query,
   UseGuards, ParseIntPipe, DefaultValuePipe,
 } from '@nestjs/common';
@@ -9,7 +9,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-
+import { ApproveProductDto } from './dto/approve-product.dto';
 @ApiTags('Admin')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -62,11 +62,10 @@ export class AdminController {
   @ApiOperation({ summary: 'Approve or reject product' })
   approveProduct(
     @Param('id') id: string,
-    @CurrentUser('sub') adminId: string,
-    @Body('approved') approved: boolean,
-    @Body('reason') reason?: string,
+    @Body() dto: ApproveProductDto,
+    @CurrentUser('id') adminId: string,
   ) {
-    return this.adminService.approveProduct(id, adminId, approved, reason);
+    return this.adminService.approveProduct(id, adminId, dto);
   }
 
   // User endpoints

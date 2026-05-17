@@ -195,7 +195,10 @@ let AdminService = class AdminService {
             }
         };
     }
-    async approveProduct(productId, adminId, approved, reason) {
+    async approveProduct(productId, adminId, dto) {
+        if (!adminId) throw new _common.BadRequestException('Admin user not authenticated properly (missing adminId)');
+        const { approvalStatus, rejectionReason } = dto;
+        const isApproved = approvalStatus === 'APPROVED';
         const product = await this.prisma.product.findUnique({
             where: {
                 id: productId
@@ -209,26 +212,34 @@ let AdminService = class AdminService {
             }
         });
         if (!product) throw new _common.NotFoundException('Product not found');
+        if (!product.vendor) throw new _common.BadRequestException('Product has no associated vendor profile');
+        if (!product.vendor.userId) throw new _common.BadRequestException('Associated vendor has no valid userId');
         const now = new Date();
         const updated = await this.prisma.product.update({
             where: {
                 id: productId
             },
             data: {
-                approvalStatus: approved ? 'APPROVED' : 'REJECTED',
-                rejectionReason: approved ? null : reason,
-                isPublished: approved,
-                publishedAt: approved ? now : null,
-                approvedBy: approved ? adminId : null,
-                approvedAt: approved ? now : null
+                approvalStatus: isApproved ? 'APPROVED' : 'REJECTED',
+                rejectionReason: isApproved ? null : rejectionReason,
+                isPublished: isApproved,
+                publishedAt: isApproved ? now : null,
+                approvedBy: isApproved ? adminId : null,
+                approvedAt: isApproved ? now : null
             }
         });
         const vendorUserId = product.vendor.userId;
-        const notif = await this.notifications.create(vendorUserId, approved ? 'Product Approved' : 'Product Rejected', approved ? `Your product "${product.name}" has been approved and is now live.` : `Your product "${product.name}" was rejected. Reason: ${reason || 'Not specified'}`, _client.NotificationType.PRODUCT_APPROVED, {
+        // Vendor Notification
+        const vendorNotif = await this.notifications.create(vendorUserId, isApproved ? 'Product Approved' : 'Product Rejected', isApproved ? `Your product "${product.name}" has been approved and is now live.` : `Your product "${product.name}" was rejected. Reason: ${rejectionReason || 'Not specified'}`, _client.NotificationType.PRODUCT_APPROVED, {
             productId
         });
-        this.trackingGateway.emitNotification(vendorUserId, notif);
-        const event = approved ? 'product.approved' : 'product.rejected';
+        this.trackingGateway.emitNotification(vendorUserId, vendorNotif);
+        // Admin Notification
+        const adminNotif = await this.notifications.create(adminId, isApproved ? 'Product Approved' : 'Product Rejected', isApproved ? `You have approved the product "${product.name}".` : `You have rejected the product "${product.name}". Reason: ${rejectionReason || 'Not specified'}`, _client.NotificationType.PRODUCT_APPROVED, {
+            productId
+        });
+        this.trackingGateway.emitNotification(adminId, adminNotif);
+        const event = isApproved ? 'product.approved' : 'product.rejected';
         this.trackingGateway.server?.emit(event, {
             productId,
             vendorId: product.vendorId,
@@ -237,7 +248,7 @@ let AdminService = class AdminService {
         });
         return {
             success: true,
-            message: `Product ${approved ? 'approved and published' : 'rejected'}`,
+            message: `Product ${isApproved ? 'approved and published' : 'rejected'}`,
             data: updated
         };
     }
