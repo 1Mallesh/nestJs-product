@@ -109,9 +109,11 @@ model Vendor {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products Product[]
-  orders   OrderItem[]
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products    Product[]
+  orders      OrderItem[]
+  settlements VendorSettlement[]
+  commissions Commission[]
 
   @@map("vendors")
 }
@@ -140,6 +142,7 @@ model DeliveryBoy {
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   deliveries      OrderDelivery[]
   trackingHistory DeliveryTracking[]
+  payouts         DeliveryPayout[]
 
   @@map("delivery_boys")
 }
@@ -292,32 +295,36 @@ model Wishlist {
 }
 
 model Order {
-  id                   String        @id @default(uuid())
+  id                   String             @id @default(uuid())
   userId               String
   addressId            String
-  orderNumber          String        @unique
-  status               OrderStatus   @default(PENDING)
-  paymentStatus        PaymentStatus @default(PENDING)
-  paymentMethod        PaymentMethod @default(RAZORPAY)
+  orderNumber          String             @unique
+  status               OrderStatus        @default(PENDING)
+  paymentStatus        PaymentStatus      @default(PENDING)
+  paymentMethod        PaymentMethod      @default(RAZORPAY)
   subtotal             Float
-  shippingCharge       Float         @default(0)
-  discount             Float         @default(0)
+  shippingCharge       Float              @default(0)
+  discount             Float              @default(0)
   totalAmount          Float
   notes                String?
   cancellationReason   String?
-  deliveryType         DeliveryType  @default(LOCAL)
+  deliveryType         DeliveryType       @default(LOCAL)
   shiprocketOrderId    String?
   shiprocketShipmentId String?
   awbCode              String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  user     User               @relation(fields: [userId], references: [id])
-  address  Address            @relation(fields: [addressId], references: [id])
-  items    OrderItem[]
-  payment  Payment?
-  delivery OrderDelivery?
-  tracking DeliveryTracking[]
+  user              User               @relation(fields: [userId], references: [id])
+  address           Address            @relation(fields: [addressId], references: [id])
+  items             OrderItem[]
+  payment           Payment?
+  delivery          OrderDelivery?
+  tracking          DeliveryTracking[]
+  vendorSettlements VendorSettlement[]
+  deliveryPayouts   DeliveryPayout[]
+  gstTransaction    GstTransaction?
+  commissions       Commission[]
 
   @@map("orders")
 }
@@ -485,4 +492,73 @@ model Coupon {
   updatedAt      DateTime  @updatedAt
 
   @@map("coupons")
+}
+
+model VendorSettlement {
+  id              String         @id @default(uuid())
+  vendorId        String
+  orderId         String
+  amount          Float
+  status          String         @default("PENDING") // PENDING, SETTLED, FAILED
+  transactionId   String?        // Bank reference/Upi reference
+  settledAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  vendor          Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("vendor_settlements")
+}
+
+model DeliveryPayout {
+  id              String         @id @default(uuid())
+  deliveryBoyId   String
+  orderId         String
+  amount          Float
+  status          String         @default("PENDING") // PENDING, PAID, FAILED
+  transactionId   String?
+  paidAt          DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  deliveryBoy     DeliveryBoy    @relation(fields: [deliveryBoyId], references: [id], onDelete: Cascade)
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_payouts")
+}
+
+model GstTransaction {
+  id              String         @id @default(uuid())
+  orderId         String         @unique
+  gstNumber       String?        // Vendor's GSTIN
+  taxableAmount   Float          // Amount on which GST is calculated
+  cgst            Float          // 9% CGST
+  sgst            Float          // 9% SGST
+  igst            Float          @default(0) // 18% IGST if interstate
+  totalGst        Float
+  status          String         @default("ACCRUED") // ACCRUED, FILED
+  createdAt       DateTime       @default(now())
+
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("gst_transactions")
+}
+
+model Commission {
+  id               String         @id @default(uuid())
+  orderId          String
+  vendorId         String
+  grossAmount      Float
+  commissionRate   Float
+  commissionAmount Float
+  gstOnCommission  Float          // 18% GST on the platform commission itself
+  netCommission    Float          // commissionAmount + gstOnCommission
+  status           String         @default("PENDING") // PENDING, COLLECTED
+  createdAt        DateTime       @default(now())
+
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendor           Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@map("commissions")
 }

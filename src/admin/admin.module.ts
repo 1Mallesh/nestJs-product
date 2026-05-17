@@ -3,10 +3,12 @@ import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { TrackingModule } from '../tracking/tracking.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ShippingModule } from '../shipping/shipping.module';
 
 @Module({
-  imports: [TrackingModule, NotificationsModule],
+  imports: [TrackingModule, NotificationsModule, ShippingModule],
   controllers: [AdminController],
   providers: [AdminService],
 })
 export class AdminModule {}
+

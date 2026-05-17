@@ -99,7 +99,12 @@ let OrdersService = class OrdersService {
         }
         // Shipping: free above threshold or if local delivery
         const deliveryType = await this.shippingService.determineDeliveryType(address);
-        const shippingCharge = subtotal - discount >= FREE_DELIVERY_THRESHOLD ? 0 : deliveryType === 'LOCAL' ? 0 : 49;
+        let shippingCharge = subtotal - discount >= FREE_DELIVERY_THRESHOLD ? 0 : deliveryType === 'LOCAL' ? 0 : 49;
+        // Special custom coupon code bypass for real payment testing (below ₹10)
+        if (dto.couponCode && dto.couponCode.toUpperCase().trim() === 'REALTEST') {
+            discount = subtotal - 1;
+            shippingCharge = 0;
+        }
         const totalAmount = Math.round((subtotal - discount + shippingCharge) * 100) / 100;
         const orderNumber = `ORD${Date.now()}${Math.floor(Math.random() * 9000 + 1000)}`;
         this.logger.log(`[createOrder] subtotal=${subtotal} gst=${gstAmount} commission=${platformCommission} ` + `discount=${discount} shipping=${shippingCharge} total=${totalAmount} method=${dto.paymentMethod}`);
@@ -213,6 +218,76 @@ let OrdersService = class OrdersService {
             paymentMethod: dto.paymentMethod,
             userId
         });
+        // 9b. Auto-assign delivery boy for COD orders immediately
+        if (dto.paymentMethod === 'COD') {
+            try {
+                let availableBoy = null;
+                if (address && address.latitude && address.longitude) {
+                    const boys = await this.prisma.deliveryBoy.findMany({
+                        where: {
+                            approvalStatus: 'APPROVED',
+                            isAvailable: true
+                        }
+                    });
+                    let minDistance = Infinity;
+                    for (const boy of boys){
+                        if (boy.currentLatitude && boy.currentLongitude) {
+                            const distance = this.calculateDistance(address.latitude, address.longitude, boy.currentLatitude, boy.currentLongitude);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                availableBoy = boy;
+                            }
+                        }
+                    }
+                }
+                if (!availableBoy) {
+                    availableBoy = await this.prisma.deliveryBoy.findFirst({
+                        where: {
+                            approvalStatus: 'APPROVED',
+                            isAvailable: true
+                        },
+                        orderBy: {
+                            totalDeliveries: 'asc'
+                        }
+                    });
+                }
+                if (availableBoy) {
+                    await this.prisma.orderDelivery.upsert({
+                        where: {
+                            orderId: order.id
+                        },
+                        create: {
+                            orderId: order.id,
+                            deliveryBoyId: availableBoy.id,
+                            assignedAt: new Date()
+                        },
+                        update: {
+                            deliveryBoyId: availableBoy.id,
+                            assignedAt: new Date()
+                        }
+                    });
+                    await this.prisma.order.update({
+                        where: {
+                            id: order.id
+                        },
+                        data: {
+                            status: 'CONFIRMED'
+                        }
+                    });
+                    // Notify the delivery boy
+                    this.trackingGateway.emitNotification(availableBoy.userId, {
+                        title: 'New COD Delivery Assigned 🚲',
+                        message: `Order #${order.orderNumber} has been assigned to you. Please pick up immediately.`,
+                        orderNumber: order.orderNumber,
+                        orderId: order.id
+                    });
+                    this.trackingGateway.emitOrderStatusUpdate(order.id, 'CONFIRMED');
+                    this.logger.log(`[createOrder] Auto-assigned COD order ${order.orderNumber} to delivery boy ${availableBoy.id}`);
+                }
+            } catch (err) {
+                this.logger.warn(`[createOrder] COD auto-assignment failed: ${err.message}`);
+            }
+        }
         return {
             message: 'Order placed successfully',
             data: {
@@ -611,35 +686,67 @@ let OrdersService = class OrdersService {
             message: 'Order cancelled successfully'
         };
     }
-    // ── Order Tracking ────────────────────────────────────────────────────────────
+    // ── Order Tracking (full rich response for customer tracking page) ────────────
     async getOrderTracking(orderId) {
-        const tracking = await this.prisma.deliveryTracking.findMany({
-            where: {
-                orderId
-            },
-            orderBy: {
-                timestamp: 'desc'
-            },
-            take: 50
-        });
         const order = await this.prisma.order.findUnique({
             where: {
                 id: orderId
             },
-            select: {
-                status: true,
-                awbCode: true,
-                deliveryType: true,
-                orderNumber: true
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                name: true,
+                                images: true,
+                                sku: true
+                            }
+                        },
+                        vendor: {
+                            select: {
+                                shopName: true
+                            }
+                        }
+                    }
+                },
+                address: true,
+                payment: true,
+                delivery: {
+                    include: {
+                        deliveryBoy: {
+                            include: {
+                                user: {
+                                    select: {
+                                        name: true,
+                                        phone: true,
+                                        avatar: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                tracking: {
+                    orderBy: {
+                        timestamp: 'desc'
+                    },
+                    take: 50
+                }
             }
         });
+        if (!order) throw new _common.NotFoundException('Order not found');
         return {
-            message: 'Tracking data fetched',
-            data: {
-                order,
-                tracking
-            }
+            message: 'Order tracking fetched',
+            data: order
         };
+    }
+    calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth's radius in km
+        const dLat = (lat2 - lat1) * (Math.PI / 180);
+        const dLon = (lon2 - lon1) * (Math.PI / 180);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
     }
     constructor(prisma, shippingService, notifications, trackingGateway){
         this.prisma = prisma;

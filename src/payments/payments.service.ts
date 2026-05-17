@@ -95,6 +95,8 @@ export class PaymentsService {
       include: {
         payment: true,
         items: { include: { vendor: true } },
+        user: { select: { id: true, name: true } },
+        address: true,
       },
     });
 
@@ -124,8 +126,79 @@ export class PaymentsService {
       }
     });
 
-    // Emit real-time update
+    // ── Auto-assign nearest available delivery boy ───────────────────────────
+    try {
+      let availableBoy = null;
+
+      // If customer address has GPS coordinates, find the closest one
+      if (order.address && order.address.latitude && order.address.longitude) {
+        const boys = await this.prisma.deliveryBoy.findMany({
+          where: { approvalStatus: 'APPROVED', isAvailable: true },
+        });
+
+        let minDistance = Infinity;
+        for (const boy of boys) {
+          if (boy.currentLatitude && boy.currentLongitude) {
+            const distance = this.calculateDistance(
+              order.address.latitude,
+              order.address.longitude,
+              boy.currentLatitude,
+              boy.currentLongitude,
+            );
+            if (distance < minDistance) {
+              minDistance = distance;
+              availableBoy = boy;
+            }
+          }
+        }
+      }
+
+      // Fallback: If no boy found via GPS, get the least-loaded one
+      if (!availableBoy) {
+        availableBoy = await this.prisma.deliveryBoy.findFirst({
+          where: { approvalStatus: 'APPROVED', isAvailable: true },
+          orderBy: { totalDeliveries: 'asc' },
+        });
+      }
+
+      if (availableBoy) {
+        await this.prisma.orderDelivery.upsert({
+          where: { orderId: order.id },
+          create: { orderId: order.id, deliveryBoyId: availableBoy.id, assignedAt: new Date() },
+          update: { deliveryBoyId: availableBoy.id, assignedAt: new Date() },
+        });
+
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'CONFIRMED' },
+        });
+
+        // Notify the delivery boy
+        this.trackingGateway.emitNotification(availableBoy.userId, {
+          title: 'New Delivery Assigned 🚲',
+          message: `Order #${order.orderNumber} has been assigned to you. Please pick up immediately.`,
+          orderNumber: order.orderNumber,
+          orderId: order.id,
+        });
+
+        this.trackingGateway.emitOrderStatusUpdate(order.id, 'CONFIRMED');
+        this.logger.log(`[verifyPayment] Auto-assigned order ${order.orderNumber} to delivery boy ${availableBoy.id}`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`[verifyPayment] Auto-assignment failed: ${err.message}`);
+    }
+
+    // Emit real-time payment confirmed update
     this.trackingGateway.emitOrderStatusUpdate(order.id, 'CONFIRMED');
+
+    // Notify customer
+    this.notificationsService.create(
+      order.userId,
+      'Payment Successful 🎉',
+      `Your payment for order #${order.orderNumber} was successful! Your order is being prepared.`,
+      'ORDER_UPDATE' as any,
+      { orderId: order.id, orderNumber: order.orderNumber },
+    ).catch(() => {});
 
     return { message: 'Payment verified successfully', data: { orderId: order.id } };
   }
@@ -321,13 +394,13 @@ export class PaymentsService {
 
     // ── Notifications ─────────────────────────────────────────────────────────
     // Notify customer
-    await this.notificationsService.createNotification({
-      userId: order.userId,
-      title: 'Payment Successful',
-      message: `Payment of ₹${totalAmount} for order #${order.orderNumber} confirmed.`,
-      type: 'PAYMENT_SUCCESS',
-      data: { orderId: order.id, amount: totalAmount },
-    });
+    await this.notificationsService.create(
+      order.userId,
+      'Payment Successful',
+      `Payment of ₹${totalAmount} for order #${order.orderNumber} confirmed.`,
+      'PAYMENT_SUCCESS' as any,
+      { orderId: order.id, amount: totalAmount },
+    );
     this.trackingGateway.emitNotification(order.userId, {
       title: 'Payment Successful',
       message: `Order #${order.orderNumber} confirmed.`,
@@ -340,13 +413,13 @@ export class PaymentsService {
     for (const item of order.items) {
       if (notifiedVendors.has(item.vendorId)) continue;
       notifiedVendors.add(item.vendorId);
-      await this.notificationsService.createNotification({
-        userId: item.vendor.userId,
-        title: 'New Order Received',
-        message: `Order #${order.orderNumber} payment confirmed. Prepare for dispatch.`,
-        type: 'ORDER_UPDATE',
-        data: { orderId: order.id, earning: vendorBreakdown[item.vendorId]?.vendorEarning },
-      });
+      await this.notificationsService.create(
+        item.vendor.userId,
+        'New Order Received',
+        `Order #${order.orderNumber} payment confirmed. Prepare for dispatch.`,
+        'ORDER_UPDATE' as any,
+        { orderId: order.id, earning: vendorBreakdown[item.vendorId]?.vendorEarning },
+      );
       this.trackingGateway.emitNotification(item.vendor.userId, {
         title: 'New Order Received',
         message: `Order #${order.orderNumber} is confirmed and ready to pack.`,
@@ -399,13 +472,13 @@ export class PaymentsService {
     // Restore stock
     await this.restoreStock(order.id);
 
-    await this.notificationsService.createNotification({
-      userId: order.userId,
-      title: 'Payment Failed',
-      message: `Payment for order #${order.orderNumber} failed. ${failureReason}`,
-      type: 'PAYMENT_SUCCESS', // closest available type
-      data: { orderId: order.id, reason: failureReason },
-    });
+    await this.notificationsService.create(
+      order.userId,
+      'Payment Failed',
+      `Payment for order #${order.orderNumber} failed. ${failureReason}`,
+      'PAYMENT_SUCCESS' as any,
+      { orderId: order.id, reason: failureReason },
+    );
 
     this.trackingGateway.emitOrderStatusUpdate(order.id, 'CANCELLED');
 
@@ -507,5 +580,17 @@ export class PaymentsService {
     } catch {
       throw new InternalServerErrorException('Refund processing failed');
     }
+  }
+
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
   }
 }

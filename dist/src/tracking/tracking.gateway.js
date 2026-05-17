@@ -33,11 +33,13 @@ let TrackingGateway = class TrackingGateway {
     }
     async handleConnection(client) {
         try {
-            const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.split(' ')[1];
-            if (!token) {
+            const raw = client.handshake.auth?.token || client.handshake.headers?.authorization || '';
+            if (!raw) {
                 client.disconnect();
                 return;
             }
+            // Strip "Bearer " prefix if present — frontend sends both formats
+            const token = raw.startsWith('Bearer ') ? raw.slice(7) : raw;
             const payload = this.jwtService.verify(token, {
                 secret: this.configService.get('JWT_SECRET')
             });
@@ -77,6 +79,21 @@ let TrackingGateway = class TrackingGateway {
         this.server.to(`order:${orderId}`).emit('order-status-update', {
             orderId,
             status,
+            timestamp: new Date()
+        });
+        // Also emit to the global admin room
+        this.server.emit('admin-order-update', {
+            orderId,
+            status,
+            timestamp: new Date()
+        });
+    }
+    /** Delivery boy broadcasts their GPS directly via socket (no REST call needed) */ handleDeliveryLocation(data, client) {
+        if (!data.orderId || !data.latitude || !data.longitude) return;
+        this.emitLocationUpdate(data.orderId, {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            deliveryBoyId: client.data.userId ?? 'unknown',
             timestamp: new Date()
         });
     }
@@ -126,6 +143,17 @@ _ts_decorate([
     ]),
     _ts_metadata("design:returntype", void 0)
 ], TrackingGateway.prototype, "handleLeaveOrderRoom", null);
+_ts_decorate([
+    (0, _websockets.SubscribeMessage)('delivery-location'),
+    _ts_param(0, (0, _websockets.MessageBody)()),
+    _ts_param(1, (0, _websockets.ConnectedSocket)()),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        Object,
+        typeof _socketio.Socket === "undefined" ? Object : _socketio.Socket
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], TrackingGateway.prototype, "handleDeliveryLocation", null);
 _ts_decorate([
     (0, _websockets.SubscribeMessage)('join-user-room'),
     _ts_param(0, (0, _websockets.ConnectedSocket)()),

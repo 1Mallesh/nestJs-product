@@ -36,14 +36,17 @@ export class TrackingGateway
 
   async handleConnection(client: Socket) {
     try {
-      const token =
+      const raw: string =
         client.handshake.auth?.token ||
-        client.handshake.headers?.authorization?.split(' ')[1];
+        client.handshake.headers?.authorization || '';
 
-      if (!token) {
+      if (!raw) {
         client.disconnect();
         return;
       }
+
+      // Strip "Bearer " prefix if present — frontend sends both formats
+      const token = raw.startsWith('Bearer ') ? raw.slice(7) : raw;
 
       const payload = this.jwtService.verify(token, {
         secret: this.configService.get('JWT_SECRET'),
@@ -91,6 +94,23 @@ export class TrackingGateway
 
   emitOrderStatusUpdate(orderId: string, status: string) {
     this.server.to(`order:${orderId}`).emit('order-status-update', { orderId, status, timestamp: new Date() });
+    // Also emit to the global admin room
+    this.server.emit('admin-order-update', { orderId, status, timestamp: new Date() });
+  }
+
+  /** Delivery boy broadcasts their GPS directly via socket (no REST call needed) */
+  @SubscribeMessage('delivery-location')
+  handleDeliveryLocation(
+    @MessageBody() data: { orderId: string; latitude: number; longitude: number },
+    @ConnectedSocket() client: Socket,
+  ) {
+    if (!data.orderId || !data.latitude || !data.longitude) return;
+    this.emitLocationUpdate(data.orderId, {
+      latitude: data.latitude,
+      longitude: data.longitude,
+      deliveryBoyId: client.data.userId ?? 'unknown',
+      timestamp: new Date(),
+    });
   }
 
   emitNotification(userId: string, notification: any) {

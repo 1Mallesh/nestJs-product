@@ -13,6 +13,7 @@ const _adminservice = require("./admin.service");
 const _admincontroller = require("./admin.controller");
 const _trackingmodule = require("../tracking/tracking.module");
 const _notificationsmodule = require("../notifications/notifications.module");
+const _shippingmodule = require("../shipping/shipping.module");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -25,7 +26,8 @@ AdminModule = _ts_decorate([
     (0, _common.Module)({
         imports: [
             _trackingmodule.TrackingModule,
-            _notificationsmodule.NotificationsModule
+            _notificationsmodule.NotificationsModule,
+            _shippingmodule.ShippingModule
         ],
         controllers: [
             _admincontroller.AdminController

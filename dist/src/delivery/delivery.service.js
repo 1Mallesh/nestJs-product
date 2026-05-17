@@ -202,11 +202,172 @@ let DeliveryService = class DeliveryService {
                 }
             })
         ]);
+        // Calculate payouts, commissions, taxes, and settlements upon successful delivery completion
+        if (dto.action === 'DELIVERED') {
+            await this.processSettlementsAndPayouts(delivery.orderId, deliveryBoy.id);
+        }
         // Notify customer via WebSocket
         this.trackingGateway.emitOrderStatusUpdate(delivery.orderId, orderStatus);
         return {
             message: `Order marked as ${dto.action}`
         };
+    }
+    async processSettlementsAndPayouts(orderId, deliveryBoyId) {
+        try {
+            const order = await this.prisma.order.findUnique({
+                where: {
+                    id: orderId
+                },
+                include: {
+                    items: {
+                        include: {
+                            product: {
+                                include: {
+                                    vendor: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            if (!order) return;
+            const subtotal = order.subtotal;
+            // 1. Calculate GST details (18% inclusive GST standard)
+            // Reverse calculation: Taxable amount = total / 1.18, GST = total - Taxable
+            const taxableAmount = Math.round(subtotal / 1.18 * 100) / 100;
+            const totalGst = Math.round((subtotal - taxableAmount) * 100) / 100;
+            const cgst = Math.round(totalGst / 2 * 100) / 100;
+            const sgst = Math.round(totalGst / 2 * 100) / 100;
+            await this.prisma.gstTransaction.upsert({
+                where: {
+                    orderId
+                },
+                create: {
+                    orderId,
+                    taxableAmount,
+                    cgst,
+                    sgst,
+                    totalGst,
+                    status: 'ACCRUED'
+                },
+                update: {}
+            });
+            // Group items by vendor to create vendor settlements & commissions
+            const itemsByVendor = new Map();
+            for (const item of order.items){
+                const vendorId = item.vendorId;
+                if (!itemsByVendor.has(vendorId)) {
+                    itemsByVendor.set(vendorId, []);
+                }
+                itemsByVendor.get(vendorId).push(item);
+            }
+            for (const [vendorId, vendorItems] of itemsByVendor.entries()){
+                const vendorGross = vendorItems.reduce((sum, item)=>sum + item.total, 0);
+                // Find commission rate (defaults to 10% if not specified)
+                const firstProduct = vendorItems[0]?.product;
+                const commissionRate = firstProduct?.vendor?.commissionRate ?? 10.0;
+                // Commission = gross * commissionRate / 100
+                const commissionAmount = Math.round(vendorGross * (commissionRate / 100) * 100) / 100;
+                // 18% GST charged by platform on commission
+                const gstOnCommission = Math.round(commissionAmount * 0.18 * 100) / 100;
+                const netCommission = Math.round((commissionAmount + gstOnCommission) * 100) / 100;
+                // Vendor Payout = gross - netCommission
+                const vendorPayout = Math.round((vendorGross - netCommission) * 100) / 100;
+                // Save Commission entry
+                await this.prisma.commission.create({
+                    data: {
+                        orderId,
+                        vendorId,
+                        grossAmount: vendorGross,
+                        commissionRate,
+                        commissionAmount,
+                        gstOnCommission,
+                        netCommission,
+                        status: 'PENDING'
+                    }
+                });
+                // Save Vendor Settlement entry
+                await this.prisma.vendorSettlement.create({
+                    data: {
+                        orderId,
+                        vendorId,
+                        amount: vendorPayout,
+                        status: 'PENDING'
+                    }
+                });
+                // Update Vendor's total earnings in database
+                await this.prisma.vendor.update({
+                    where: {
+                        id: vendorId
+                    },
+                    data: {
+                        totalEarnings: {
+                            increment: vendorPayout
+                        }
+                    }
+                });
+            }
+            // 2. Calculate Delivery Boy Payout (Flat ₹50 incentive per order)
+            const deliveryPayoutAmount = 50.0;
+            await this.prisma.deliveryPayout.create({
+                data: {
+                    orderId,
+                    deliveryBoyId,
+                    amount: deliveryPayoutAmount,
+                    status: 'PENDING'
+                }
+            });
+            // Update Delivery Boy's total earnings in database
+            await this.prisma.deliveryBoy.update({
+                where: {
+                    id: deliveryBoyId
+                },
+                data: {
+                    totalEarnings: {
+                        increment: deliveryPayoutAmount
+                    }
+                }
+            });
+            // Query the associated payment record to link with the Payment Ledger
+            const payment = await this.prisma.payment.findUnique({
+                where: {
+                    orderId
+                }
+            });
+            if (payment) {
+                // Create Payment Ledger entry to reconcile all totals
+                await this.prisma.paymentLedger.upsert({
+                    where: {
+                        orderId
+                    },
+                    create: {
+                        orderId,
+                        paymentId: payment.id,
+                        totalAmount: order.totalAmount,
+                        subtotal: order.subtotal,
+                        gstAmount: totalGst,
+                        shippingCharge: order.shippingCharge,
+                        discount: order.discount,
+                        platformCommission: Math.round(subtotal * 0.10 * 100) / 100,
+                        gstOnCommission: Math.round(subtotal * 0.10 * 0.18 * 100) / 100,
+                        deliveryPayout: deliveryPayoutAmount,
+                        netPlatformEarning: Math.round((subtotal * 0.10 - deliveryPayoutAmount) * 100) / 100,
+                        vendorBreakdown: {}
+                    },
+                    update: {}
+                });
+            }
+            // Emit real-time settlement notification
+            this.trackingGateway.server.emit('settlement.created', {
+                orderId,
+                orderNumber: order.orderNumber,
+                totalAmount: order.totalAmount,
+                deliveryPayout: deliveryPayoutAmount,
+                timestamp: new Date()
+            });
+        } catch (err) {
+            console.error('[processSettlementsAndPayouts] Error generating settlements:', err.message);
+        }
     }
     async getDashboard(userId) {
         const deliveryBoy = await this.prisma.deliveryBoy.findUnique({
