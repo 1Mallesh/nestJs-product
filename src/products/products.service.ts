@@ -1,19 +1,28 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { TrackingGateway } from '../tracking/tracking.gateway';
 import { CreateProductDto, UpdateProductDto, CreateVariantDto } from './dto/product.dto';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    private trackingGateway: TrackingGateway,
+  ) {}
 
   async create(userId: string, dto: CreateProductDto) {
-    const vendor = await this.prisma.vendor.findUnique({
-      where: { userId },
-    });
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
     if (!vendor) throw new ForbiddenException('Vendor profile not found');
     if (vendor.approvalStatus !== 'APPROVED') {
       throw new ForbiddenException('Vendor account not yet approved');
     }
+
+    const category = await this.prisma.category.findUnique({ where: { id: dto.categoryId } });
+    if (!category) throw new BadRequestException('Category not found');
+    if (!category.isActive) throw new BadRequestException('Category is inactive');
 
     const slug = `${dto.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}-${Date.now()}`;
 
@@ -24,9 +33,33 @@ export class ProductsService {
         vendorId: vendor.id,
         images: dto.images || [],
         tags: dto.tags || [],
+        approvalStatus: 'PENDING',
+        isPublished: false,
       },
     });
-    return { message: 'Product submitted for approval', data: product };
+
+    // Notify all admins via DB + socket
+    const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN' } });
+    await Promise.all(
+      admins.map(async (admin) => {
+        const notif = await this.notifications.create(
+          admin.id,
+          'New Product Pending Approval',
+          `Vendor "${vendor.shopName}" submitted "${product.name}" for review.`,
+          NotificationType.GENERAL,
+          { productId: product.id },
+        );
+        this.trackingGateway.emitNotification(admin.id, notif);
+      }),
+    );
+
+    this.trackingGateway.server?.emit('product.pending', {
+      productId: product.id,
+      vendorId: vendor.id,
+      name: product.name,
+    });
+
+    return { success: true, message: 'Product submitted for approval', data: product };
   }
 
   async findAll(query: {
@@ -35,7 +68,7 @@ export class ProductsService {
     const { page = 1, limit = 20, categoryId, search, minPrice, maxPrice } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { isActive: true, approvalStatus: 'APPROVED' };
+    const where: any = { isActive: true, approvalStatus: 'APPROVED', isPublished: true };
     if (categoryId) where.categoryId = categoryId;
     if (search) where.name = { contains: search, mode: 'insensitive' };
     if (minPrice !== undefined || maxPrice !== undefined) {
@@ -58,7 +91,7 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
-    return { message: 'Products fetched', data: { products, total, page, limit } };
+    return { success: true, message: 'Products fetched', data: { products, total, page, limit } };
   }
 
   async findOne(id: string) {
@@ -76,7 +109,7 @@ export class ProductsService {
       },
     });
     if (!product) throw new NotFoundException('Product not found');
-    return { message: 'Product fetched', data: product };
+    return { success: true, message: 'Product fetched', data: product };
   }
 
   async update(userId: string, productId: string, dto: UpdateProductDto) {
@@ -92,7 +125,7 @@ export class ProductsService {
       where: { id: productId },
       data: dto,
     });
-    return { message: 'Product updated', data: updated };
+    return { success: true, message: 'Product updated', data: updated };
   }
 
   async remove(userId: string, productId: string) {
@@ -108,7 +141,7 @@ export class ProductsService {
       where: { id: productId },
       data: { isActive: false },
     });
-    return { message: 'Product deactivated' };
+    return { success: true, message: 'Product deactivated' };
   }
 
   async addVariant(userId: string, productId: string, dto: CreateVariantDto) {
@@ -123,7 +156,7 @@ export class ProductsService {
     const variant = await this.prisma.productVariant.create({
       data: { ...dto, productId },
     });
-    return { message: 'Variant added', data: variant };
+    return { success: true, message: 'Variant added', data: variant };
   }
 
   async getVendorProducts(userId: string, page = 1, limit = 10) {
@@ -142,6 +175,6 @@ export class ProductsService {
       this.prisma.product.count({ where: { vendorId: vendor.id } }),
     ]);
 
-    return { message: 'Products fetched', data: { products, total, page, limit } };
+    return { success: true, message: 'Products fetched', data: { products, total, page, limit } };
   }
 }

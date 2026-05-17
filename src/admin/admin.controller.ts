@@ -8,6 +8,7 @@ import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Admin')
 @ApiBearerAuth('JWT-auth')
@@ -61,10 +62,11 @@ export class AdminController {
   @ApiOperation({ summary: 'Approve or reject product' })
   approveProduct(
     @Param('id') id: string,
+    @CurrentUser('sub') adminId: string,
     @Body('approved') approved: boolean,
     @Body('reason') reason?: string,
   ) {
-    return this.adminService.approveProduct(id, approved, reason);
+    return this.adminService.approveProduct(id, adminId, approved, reason);
   }
 
   // User endpoints

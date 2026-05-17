@@ -1,9 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { TrackingGateway } from '../tracking/tracking.gateway';
+import { NotificationType } from '@prisma/client';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+    private trackingGateway: TrackingGateway,
+  ) {}
 
   async getDashboard() {
     const [
@@ -23,14 +30,11 @@ export class AdminService {
     ]);
 
     return {
+      success: true,
       message: 'Dashboard data',
       data: {
-        totalUsers,
-        totalVendors,
-        totalProducts,
-        totalOrders,
-        pendingVendors,
-        pendingProducts,
+        totalUsers, totalVendors, totalProducts, totalOrders,
+        pendingVendors, pendingProducts,
         totalRevenue: totalRevenue._sum.amount || 0,
         todayOrders,
       },
@@ -47,14 +51,13 @@ export class AdminService {
       this.prisma.vendor.findMany({
         where,
         include: { user: { select: { name: true, email: true, phone: true } } },
-        skip,
-        take: limit,
+        skip, take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.vendor.count({ where }),
     ]);
 
-    return { message: 'Vendors fetched', data: { vendors, total, page, limit } };
+    return { success: true, message: 'Vendors fetched', data: { vendors, total, page, limit } };
   }
 
   async approveVendor(vendorId: string, approved: boolean, reason?: string) {
@@ -69,7 +72,6 @@ export class AdminService {
       },
     });
 
-    // Update user role to VENDOR if approved
     if (approved) {
       await this.prisma.user.update({
         where: { id: vendor.userId },
@@ -77,7 +79,18 @@ export class AdminService {
       });
     }
 
-    return { message: `Vendor ${approved ? 'approved' : 'rejected'}`, data: updated };
+    const notif = await this.notifications.create(
+      vendor.userId,
+      approved ? 'Vendor Account Approved' : 'Vendor Account Rejected',
+      approved
+        ? 'Your vendor account has been approved. You can now list products.'
+        : `Your vendor account was rejected. Reason: ${reason || 'Not specified'}`,
+      NotificationType.VENDOR_APPROVED,
+      { vendorId },
+    );
+    this.trackingGateway.emitNotification(vendor.userId, notif);
+
+    return { success: true, message: `Vendor ${approved ? 'approved' : 'rejected'}`, data: updated };
   }
 
   // Product Management
@@ -90,32 +103,60 @@ export class AdminService {
       this.prisma.product.findMany({
         where,
         include: {
-          vendor: { select: { shopName: true } },
+          vendor: { select: { shopName: true, userId: true } },
           category: { select: { name: true } },
         },
-        skip,
-        take: limit,
+        skip, take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.product.count({ where }),
     ]);
 
-    return { message: 'Products fetched', data: { products, total, page, limit } };
+    return { success: true, message: 'Products fetched', data: { products, total, page, limit } };
   }
 
-  async approveProduct(productId: string, approved: boolean, reason?: string) {
-    const product = await this.prisma.product.findUnique({ where: { id: productId } });
+  async approveProduct(productId: string, adminId: string, approved: boolean, reason?: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
+      include: { vendor: { include: { user: true } } },
+    });
     if (!product) throw new NotFoundException('Product not found');
 
+    const now = new Date();
     const updated = await this.prisma.product.update({
       where: { id: productId },
       data: {
         approvalStatus: approved ? 'APPROVED' : 'REJECTED',
         rejectionReason: approved ? null : reason,
+        isPublished: approved,
+        publishedAt: approved ? now : null,
+        approvedBy: approved ? adminId : null,
+        approvedAt: approved ? now : null,
       },
     });
 
-    return { message: `Product ${approved ? 'approved' : 'rejected'}`, data: updated };
+    const vendorUserId = product.vendor.userId;
+
+    const notif = await this.notifications.create(
+      vendorUserId,
+      approved ? 'Product Approved' : 'Product Rejected',
+      approved
+        ? `Your product "${product.name}" has been approved and is now live.`
+        : `Your product "${product.name}" was rejected. Reason: ${reason || 'Not specified'}`,
+      NotificationType.PRODUCT_APPROVED,
+      { productId },
+    );
+    this.trackingGateway.emitNotification(vendorUserId, notif);
+
+    const event = approved ? 'product.approved' : 'product.rejected';
+    this.trackingGateway.server?.emit(event, {
+      productId,
+      vendorId: product.vendorId,
+      name: product.name,
+      approvedBy: adminId,
+    });
+
+    return { success: true, message: `Product ${approved ? 'approved and published' : 'rejected'}`, data: updated };
   }
 
   // User Management
@@ -127,18 +168,14 @@ export class AdminService {
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
-        select: {
-          id: true, name: true, email: true, phone: true,
-          role: true, isActive: true, createdAt: true,
-        },
-        skip,
-        take: limit,
+        select: { id: true, name: true, email: true, phone: true, role: true, isActive: true, createdAt: true },
+        skip, take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.user.count({ where }),
     ]);
 
-    return { message: 'Users fetched', data: { users, total, page, limit } };
+    return { success: true, message: 'Users fetched', data: { users, total, page, limit } };
   }
 
   async toggleUserBlock(userId: string) {
@@ -151,10 +188,7 @@ export class AdminService {
       select: { id: true, name: true, isActive: true },
     });
 
-    return {
-      message: `User ${updated.isActive ? 'unblocked' : 'blocked'}`,
-      data: updated,
-    };
+    return { success: true, message: `User ${updated.isActive ? 'unblocked' : 'blocked'}`, data: updated };
   }
 
   // Order Management
@@ -171,14 +205,13 @@ export class AdminService {
           items: { include: { product: { select: { name: true } } } },
           payment: { select: { status: true, amount: true } },
         },
-        skip,
-        take: limit,
+        skip, take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.order.count({ where }),
     ]);
 
-    return { message: 'Orders fetched', data: { orders, total, page, limit } };
+    return { success: true, message: 'Orders fetched', data: { orders, total, page, limit } };
   }
 
   // Delivery Boy Management
@@ -191,14 +224,13 @@ export class AdminService {
       this.prisma.deliveryBoy.findMany({
         where,
         include: { user: { select: { name: true, email: true, phone: true } } },
-        skip,
-        take: limit,
+        skip, take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.deliveryBoy.count({ where }),
     ]);
 
-    return { message: 'Delivery boys fetched', data: { boys, total, page, limit } };
+    return { success: true, message: 'Delivery boys fetched', data: { boys, total, page, limit } };
   }
 
   async approveDeliveryBoy(deliveryBoyId: string, approved: boolean, reason?: string) {
@@ -207,9 +239,7 @@ export class AdminService {
 
     const updated = await this.prisma.deliveryBoy.update({
       where: { id: deliveryBoyId },
-      data: {
-        approvalStatus: approved ? 'APPROVED' : 'REJECTED',
-      },
+      data: { approvalStatus: approved ? 'APPROVED' : 'REJECTED' },
     });
 
     if (approved) {
@@ -219,7 +249,7 @@ export class AdminService {
       });
     }
 
-    return { message: `Delivery boy ${approved ? 'approved' : 'rejected'}`, data: updated };
+    return { success: true, message: `Delivery boy ${approved ? 'approved' : 'rejected'}`, data: updated };
   }
 
   async assignDeliveryBoy(orderId: string, deliveryBoyId: string) {
@@ -232,9 +262,7 @@ export class AdminService {
       throw new BadRequestException('Order payment not confirmed');
     }
 
-    const deliveryBoy = await this.prisma.deliveryBoy.findUnique({
-      where: { id: deliveryBoyId },
-    });
+    const deliveryBoy = await this.prisma.deliveryBoy.findUnique({ where: { id: deliveryBoyId } });
     if (!deliveryBoy || deliveryBoy.approvalStatus !== 'APPROVED') {
       throw new BadRequestException('Delivery boy not available');
     }
@@ -250,7 +278,9 @@ export class AdminService {
       data: { status: 'PACKED' },
     });
 
-    return { message: 'Delivery boy assigned', data: delivery };
+    this.trackingGateway.emitOrderStatusUpdate(orderId, 'PACKED');
+
+    return { success: true, message: 'Delivery boy assigned', data: delivery };
   }
 
   // Analytics
@@ -264,6 +294,6 @@ export class AdminService {
       _sum: { amount: true },
     });
 
-    return { message: 'Revenue analytics', data: revenue };
+    return { success: true, message: 'Revenue analytics', data: revenue };
   }
 }

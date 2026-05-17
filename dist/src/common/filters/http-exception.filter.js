@@ -9,6 +9,7 @@ Object.defineProperty(exports, "AllExceptionsFilter", {
     }
 });
 const _common = require("@nestjs/common");
+const _client = require("@prisma/client");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -20,8 +21,31 @@ let AllExceptionsFilter = class AllExceptionsFilter {
         const ctx = host.switchToHttp();
         const response = ctx.getResponse();
         const request = ctx.getRequest();
-        const status = exception instanceof _common.HttpException ? exception.getStatus() : _common.HttpStatus.INTERNAL_SERVER_ERROR;
-        const message = exception instanceof _common.HttpException ? exception.getResponse() : 'Internal server error';
+        let status;
+        let message;
+        if (exception instanceof _common.HttpException) {
+            status = exception.getStatus();
+            message = exception.getResponse();
+        } else if (exception instanceof _client.Prisma.PrismaClientKnownRequestError) {
+            status = _common.HttpStatus.BAD_REQUEST;
+            switch(exception.code){
+                case 'P2002':
+                    message = `Unique constraint violation on field: ${exception.meta?.target?.join(', ')}`;
+                    break;
+                case 'P2003':
+                    message = `Foreign key constraint failed on field: ${exception.meta?.field_name}`;
+                    break;
+                case 'P2025':
+                    message = 'Record not found';
+                    status = _common.HttpStatus.NOT_FOUND;
+                    break;
+                default:
+                    message = `Database error: ${exception.message}`;
+            }
+        } else {
+            status = _common.HttpStatus.INTERNAL_SERVER_ERROR;
+            message = 'Internal server error';
+        }
         const errorResponse = {
             statusCode: status,
             timestamp: new Date().toISOString(),

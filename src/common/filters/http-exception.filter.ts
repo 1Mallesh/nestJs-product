@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -17,15 +18,32 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+    let status: number;
+    let message: string | object;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Internal server error';
+    if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      message = exception.getResponse();
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      status = HttpStatus.BAD_REQUEST;
+      switch (exception.code) {
+        case 'P2002':
+          message = `Unique constraint violation on field: ${(exception.meta?.target as string[])?.join(', ')}`;
+          break;
+        case 'P2003':
+          message = `Foreign key constraint failed on field: ${exception.meta?.field_name}`;
+          break;
+        case 'P2025':
+          message = 'Record not found';
+          status = HttpStatus.NOT_FOUND;
+          break;
+        default:
+          message = `Database error: ${exception.message}`;
+      }
+    } else {
+      status = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error';
+    }
 
     const errorResponse = {
       statusCode: status,

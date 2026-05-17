@@ -10,6 +10,9 @@ Object.defineProperty(exports, "ProductsService", {
 });
 const _common = require("@nestjs/common");
 const _prismaservice = require("../prisma/prisma.service");
+const _notificationsservice = require("../notifications/notifications.service");
+const _trackinggateway = require("../tracking/tracking.gateway");
+const _client = require("@prisma/client");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -30,6 +33,13 @@ let ProductsService = class ProductsService {
         if (vendor.approvalStatus !== 'APPROVED') {
             throw new _common.ForbiddenException('Vendor account not yet approved');
         }
+        const category = await this.prisma.category.findUnique({
+            where: {
+                id: dto.categoryId
+            }
+        });
+        if (!category) throw new _common.BadRequestException('Category not found');
+        if (!category.isActive) throw new _common.BadRequestException('Category is inactive');
         const slug = `${dto.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}-${Date.now()}`;
         const product = await this.prisma.product.create({
             data: {
@@ -37,10 +47,30 @@ let ProductsService = class ProductsService {
                 slug,
                 vendorId: vendor.id,
                 images: dto.images || [],
-                tags: dto.tags || []
+                tags: dto.tags || [],
+                approvalStatus: 'PENDING',
+                isPublished: false
             }
         });
+        // Notify all admins via DB + socket
+        const admins = await this.prisma.user.findMany({
+            where: {
+                role: 'ADMIN'
+            }
+        });
+        await Promise.all(admins.map(async (admin)=>{
+            const notif = await this.notifications.create(admin.id, 'New Product Pending Approval', `Vendor "${vendor.shopName}" submitted "${product.name}" for review.`, _client.NotificationType.GENERAL, {
+                productId: product.id
+            });
+            this.trackingGateway.emitNotification(admin.id, notif);
+        }));
+        this.trackingGateway.server?.emit('product.pending', {
+            productId: product.id,
+            vendorId: vendor.id,
+            name: product.name
+        });
         return {
+            success: true,
             message: 'Product submitted for approval',
             data: product
         };
@@ -50,7 +80,8 @@ let ProductsService = class ProductsService {
         const skip = (page - 1) * limit;
         const where = {
             isActive: true,
-            approvalStatus: 'APPROVED'
+            approvalStatus: 'APPROVED',
+            isPublished: true
         };
         if (categoryId) where.categoryId = categoryId;
         if (search) where.name = {
@@ -89,6 +120,7 @@ let ProductsService = class ProductsService {
             })
         ]);
         return {
+            success: true,
             message: 'Products fetched',
             data: {
                 products,
@@ -130,6 +162,7 @@ let ProductsService = class ProductsService {
         });
         if (!product) throw new _common.NotFoundException('Product not found');
         return {
+            success: true,
             message: 'Product fetched',
             data: product
         };
@@ -155,6 +188,7 @@ let ProductsService = class ProductsService {
             data: dto
         });
         return {
+            success: true,
             message: 'Product updated',
             data: updated
         };
@@ -182,6 +216,7 @@ let ProductsService = class ProductsService {
             }
         });
         return {
+            success: true,
             message: 'Product deactivated'
         };
     }
@@ -206,6 +241,7 @@ let ProductsService = class ProductsService {
             }
         });
         return {
+            success: true,
             message: 'Variant added',
             data: variant
         };
@@ -244,6 +280,7 @@ let ProductsService = class ProductsService {
             })
         ]);
         return {
+            success: true,
             message: 'Products fetched',
             data: {
                 products,
@@ -253,15 +290,19 @@ let ProductsService = class ProductsService {
             }
         };
     }
-    constructor(prisma){
+    constructor(prisma, notifications, trackingGateway){
         this.prisma = prisma;
+        this.notifications = notifications;
+        this.trackingGateway = trackingGateway;
     }
 };
 ProductsService = _ts_decorate([
     (0, _common.Injectable)(),
     _ts_metadata("design:type", Function),
     _ts_metadata("design:paramtypes", [
-        typeof _prismaservice.PrismaService === "undefined" ? Object : _prismaservice.PrismaService
+        typeof _prismaservice.PrismaService === "undefined" ? Object : _prismaservice.PrismaService,
+        typeof _notificationsservice.NotificationsService === "undefined" ? Object : _notificationsservice.NotificationsService,
+        typeof _trackinggateway.TrackingGateway === "undefined" ? Object : _trackinggateway.TrackingGateway
     ])
 ], ProductsService);
 

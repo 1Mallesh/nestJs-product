@@ -10,6 +10,9 @@ Object.defineProperty(exports, "AdminService", {
 });
 const _common = require("@nestjs/common");
 const _prismaservice = require("../prisma/prisma.service");
+const _notificationsservice = require("../notifications/notifications.service");
+const _trackinggateway = require("../tracking/tracking.gateway");
+const _client = require("@prisma/client");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -62,6 +65,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Dashboard data',
             data: {
                 totalUsers,
@@ -103,6 +107,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Vendors fetched',
             data: {
                 vendors,
@@ -128,7 +133,6 @@ let AdminService = class AdminService {
                 rejectionReason: approved ? null : reason
             }
         });
-        // Update user role to VENDOR if approved
         if (approved) {
             await this.prisma.user.update({
                 where: {
@@ -139,7 +143,12 @@ let AdminService = class AdminService {
                 }
             });
         }
+        const notif = await this.notifications.create(vendor.userId, approved ? 'Vendor Account Approved' : 'Vendor Account Rejected', approved ? 'Your vendor account has been approved. You can now list products.' : `Your vendor account was rejected. Reason: ${reason || 'Not specified'}`, _client.NotificationType.VENDOR_APPROVED, {
+            vendorId
+        });
+        this.trackingGateway.emitNotification(vendor.userId, notif);
         return {
+            success: true,
             message: `Vendor ${approved ? 'approved' : 'rejected'}`,
             data: updated
         };
@@ -155,7 +164,8 @@ let AdminService = class AdminService {
                 include: {
                     vendor: {
                         select: {
-                            shopName: true
+                            shopName: true,
+                            userId: true
                         }
                     },
                     category: {
@@ -175,6 +185,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Products fetched',
             data: {
                 products,
@@ -184,24 +195,49 @@ let AdminService = class AdminService {
             }
         };
     }
-    async approveProduct(productId, approved, reason) {
+    async approveProduct(productId, adminId, approved, reason) {
         const product = await this.prisma.product.findUnique({
             where: {
                 id: productId
+            },
+            include: {
+                vendor: {
+                    include: {
+                        user: true
+                    }
+                }
             }
         });
         if (!product) throw new _common.NotFoundException('Product not found');
+        const now = new Date();
         const updated = await this.prisma.product.update({
             where: {
                 id: productId
             },
             data: {
                 approvalStatus: approved ? 'APPROVED' : 'REJECTED',
-                rejectionReason: approved ? null : reason
+                rejectionReason: approved ? null : reason,
+                isPublished: approved,
+                publishedAt: approved ? now : null,
+                approvedBy: approved ? adminId : null,
+                approvedAt: approved ? now : null
             }
         });
+        const vendorUserId = product.vendor.userId;
+        const notif = await this.notifications.create(vendorUserId, approved ? 'Product Approved' : 'Product Rejected', approved ? `Your product "${product.name}" has been approved and is now live.` : `Your product "${product.name}" was rejected. Reason: ${reason || 'Not specified'}`, _client.NotificationType.PRODUCT_APPROVED, {
+            productId
+        });
+        this.trackingGateway.emitNotification(vendorUserId, notif);
+        const event = approved ? 'product.approved' : 'product.rejected';
+        this.trackingGateway.server?.emit(event, {
+            productId,
+            vendorId: product.vendorId,
+            name: product.name,
+            approvedBy: adminId
+        });
         return {
-            message: `Product ${approved ? 'approved' : 'rejected'}`,
+            success: true,
+            message: `Product ${approved ? 'approved and published' : 'rejected'}`,
             data: updated
         };
     }
@@ -233,6 +269,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Users fetched',
             data: {
                 users,
@@ -263,6 +300,7 @@ let AdminService = class AdminService {
             }
         });
         return {
+            success: true,
             message: `User ${updated.isActive ? 'unblocked' : 'blocked'}`,
             data: updated
         };
@@ -309,6 +347,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Orders fetched',
             data: {
                 orders,
@@ -346,6 +385,7 @@ let AdminService = class AdminService {
             })
         ]);
         return {
+            success: true,
             message: 'Delivery boys fetched',
             data: {
                 boys,
@@ -381,6 +421,7 @@ let AdminService = class AdminService {
             });
         }
         return {
+            success: true,
             message: `Delivery boy ${approved ? 'approved' : 'rejected'}`,
             data: updated
         };
@@ -428,7 +469,9 @@ let AdminService = class AdminService {
                 status: 'PACKED'
             }
         });
+        this.trackingGateway.emitOrderStatusUpdate(orderId, 'PACKED');
         return {
+            success: true,
             message: 'Delivery boy assigned',
             data: delivery
         };
@@ -452,19 +495,24 @@ let AdminService = class AdminService {
             }
         });
         return {
+            success: true,
             message: 'Revenue analytics',
             data: revenue
         };
     }
-    constructor(prisma){
+    constructor(prisma, notifications, trackingGateway){
         this.prisma = prisma;
+        this.notifications = notifications;
+        this.trackingGateway = trackingGateway;
     }
 };
 AdminService = _ts_decorate([
     (0, _common.Injectable)(),
     _ts_metadata("design:type", Function),
     _ts_metadata("design:paramtypes", [
-        typeof _prismaservice.PrismaService === "undefined" ? Object : _prismaservice.PrismaService
+        typeof _prismaservice.PrismaService === "undefined" ? Object : _prismaservice.PrismaService,
+        typeof _notificationsservice.NotificationsService === "undefined" ? Object : _notificationsservice.NotificationsService,
+        typeof _trackinggateway.TrackingGateway === "undefined" ? Object : _trackinggateway.TrackingGateway
     ])
 ], AdminService);
 

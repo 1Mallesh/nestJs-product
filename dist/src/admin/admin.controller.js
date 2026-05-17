@@ -15,6 +15,7 @@ const _adminservice = require("./admin.service");
 const _jwtauthguard = require("../auth/guards/jwt-auth.guard");
 const _rolesguard = require("../common/guards/roles.guard");
 const _rolesdecorator = require("../common/decorators/roles.decorator");
+const _currentuserdecorator = require("../common/decorators/current-user.decorator");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -44,8 +45,8 @@ let AdminController = class AdminController {
     getProducts(page, limit, status) {
         return this.adminService.getProducts(page, limit, status);
     }
-    approveProduct(id, approved, reason) {
-        return this.adminService.approveProduct(id, approved, reason);
+    approveProduct(id, adminId, approved, reason) {
+        return this.adminService.approveProduct(id, adminId, approved, reason);
     }
     // User endpoints
     getUsers(page, limit, role) {
@@ -152,10 +153,12 @@ _ts_decorate([
         summary: 'Approve or reject product'
     }),
     _ts_param(0, (0, _common.Param)('id')),
-    _ts_param(1, (0, _common.Body)('approved')),
-    _ts_param(2, (0, _common.Body)('reason')),
+    _ts_param(1, (0, _currentuserdecorator.CurrentUser)('sub')),
+    _ts_param(2, (0, _common.Body)('approved')),
+    _ts_param(3, (0, _common.Body)('reason')),
     _ts_metadata("design:type", Function),
     _ts_metadata("design:paramtypes", [
+        String,
         String,
         Boolean,
         String
