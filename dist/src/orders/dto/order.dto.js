@@ -14,10 +14,14 @@ _export(exports, {
     },
     get CreateOrderDto () {
         return CreateOrderDto;
+    },
+    get OrderItemPayload () {
+        return OrderItemPayload;
     }
 });
 const _swagger = require("@nestjs/swagger");
 const _classvalidator = require("class-validator");
+const _classtransformer = require("class-transformer");
 const _client = require("@prisma/client");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -28,6 +32,26 @@ function _ts_decorate(decorators, target, key, desc) {
 function _ts_metadata(k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 }
+let OrderItemPayload = class OrderItemPayload {
+};
+_ts_decorate([
+    (0, _swagger.ApiProperty)(),
+    (0, _classvalidator.IsUUID)(),
+    _ts_metadata("design:type", String)
+], OrderItemPayload.prototype, "productId", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsUUID)(),
+    _ts_metadata("design:type", String)
+], OrderItemPayload.prototype, "variantId", void 0);
+_ts_decorate([
+    (0, _swagger.ApiProperty)(),
+    (0, _classvalidator.IsInt)(),
+    (0, _classvalidator.Min)(1),
+    (0, _classtransformer.Type)(()=>Number),
+    _ts_metadata("design:type", Number)
+], OrderItemPayload.prototype, "quantity", void 0);
 let CreateOrderDto = class CreateOrderDto {
 };
 _ts_decorate([
@@ -55,6 +79,32 @@ _ts_decorate([
     (0, _classvalidator.IsString)(),
     _ts_metadata("design:type", String)
 ], CreateOrderDto.prototype, "couponCode", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)({
+        type: [
+            OrderItemPayload
+        ]
+    }),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsArray)(),
+    (0, _classvalidator.ValidateNested)({
+        each: true
+    }),
+    (0, _classtransformer.Type)(()=>OrderItemPayload),
+    _ts_metadata("design:type", Array)
+], CreateOrderDto.prototype, "items", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], CreateOrderDto.prototype, "deliverySlot", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], CreateOrderDto.prototype, "deliveryType", void 0);
 let CancelOrderDto = class CancelOrderDto {
 };
 _ts_decorate([

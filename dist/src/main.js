@@ -55,7 +55,8 @@ async function bootstrap() {
             'error',
             'warn',
             'debug'
-        ]
+        ],
+        rawBody: true
     });
     // Security
     app.use(_helmet.default());

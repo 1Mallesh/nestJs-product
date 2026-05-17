@@ -12,6 +12,8 @@ const _common = require("@nestjs/common");
 const _ordersservice = require("./orders.service");
 const _orderscontroller = require("./orders.controller");
 const _shippingmodule = require("../shipping/shipping.module");
+const _notificationsmodule = require("../notifications/notifications.module");
+const _trackingmodule = require("../tracking/tracking.module");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -23,7 +25,9 @@ let OrdersModule = class OrdersModule {
 OrdersModule = _ts_decorate([
     (0, _common.Module)({
         imports: [
-            _shippingmodule.ShippingModule
+            _shippingmodule.ShippingModule,
+            _notificationsmodule.NotificationsModule,
+            _trackingmodule.TrackingModule
         ],
         controllers: [
             _orderscontroller.OrdersController

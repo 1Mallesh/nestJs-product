@@ -351,6 +351,7 @@ model Payment {
   razorpayOrderId   String?       @unique
   razorpayPaymentId String?       @unique
   razorpaySignature String?
+  webhookEventId    String?       @unique
   amount            Float
   currency          String        @default("INR")
   status            PaymentStatus @default(PENDING)
@@ -361,9 +362,32 @@ model Payment {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentLedger PaymentLedger?
 
   @@map("payments")
+}
+
+model PaymentLedger {
+  id                  String    @id @default(uuid())
+  paymentId           String    @unique
+  orderId             String    @unique
+  totalAmount         Float
+  subtotal            Float
+  gstAmount           Float
+  shippingCharge      Float     @default(0)
+  discount            Float     @default(0)
+  platformCommission  Float
+  gstOnCommission     Float
+  deliveryPayout      Float     @default(0)
+  netPlatformEarning  Float
+  vendorBreakdown     Json
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("payment_ledger")
 }
 
 model OrderDelivery {
