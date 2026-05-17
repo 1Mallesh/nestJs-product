@@ -1,4 +1,4 @@
-﻿import {
+import {
   Controller, Get, Post, Put, Delete, Body, Param, Query,
   UseGuards, ParseIntPipe, DefaultValuePipe, ParseFloatPipe, Optional,
 } from '@nestjs/common';
@@ -61,6 +61,18 @@ export class ProductsController {
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
     return this.productsService.getVendorProducts(userId, page, limit);
+  }
+
+  @Public()
+  @Get('featured')
+  @ApiOperation({ summary: 'Get featured products' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getFeatured(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    return this.productsService.getFeatured(page, limit);
   }
 
   @Public()

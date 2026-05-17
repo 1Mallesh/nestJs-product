@@ -130,6 +130,81 @@ let ProductsService = class ProductsService {
             }
         };
     }
+    async getFeatured(page = 1, limit = 10) {
+        const cacheKey = `featured_page_${page}_limit_${limit}`;
+        const cached = this.featuredCache.get(cacheKey);
+        if (cached && cached.expires > Date.now()) {
+            return cached.data;
+        }
+        const skip = (page - 1) * limit;
+        const where = {
+            isActive: true,
+            approvalStatus: 'APPROVED',
+            isPublished: true,
+            isFeatured: true
+        };
+        const [products, total] = await Promise.all([
+            this.prisma.product.findMany({
+                where,
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    images: true,
+                    price: true,
+                    comparePrice: true,
+                    stock: true,
+                    averageRating: true,
+                    category: {
+                        select: {
+                            name: true,
+                            slug: true
+                        }
+                    },
+                    vendor: {
+                        select: {
+                            shopName: true
+                        }
+                    }
+                },
+                skip,
+                take: limit,
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            }),
+            this.prisma.product.count({
+                where
+            })
+        ]);
+        const result = {
+            success: true,
+            message: 'Featured products fetched',
+            data: {
+                products: products.map((p)=>({
+                        id: p.id,
+                        name: p.name,
+                        slug: p.slug,
+                        image: p.images[0] || null,
+                        price: p.price,
+                        comparePrice: p.comparePrice,
+                        stock: p.stock,
+                        rating: p.averageRating,
+                        category: p.category,
+                        vendor: p.vendor
+                    })),
+                total,
+                page,
+                limit
+            }
+        };
+        // Cache for 5 minutes (300000 ms)
+        this.featuredCache.set(cacheKey, {
+            data: result,
+            expires: Date.now() + 300000
+        });
+        return result;
+    }
     async findOne(id) {
         const product = await this.prisma.product.findUnique({
             where: {
@@ -294,6 +369,7 @@ let ProductsService = class ProductsService {
         this.prisma = prisma;
         this.notifications = notifications;
         this.trackingGateway = trackingGateway;
+        this.featuredCache = new Map();
     }
 };
 ProductsService = _ts_decorate([

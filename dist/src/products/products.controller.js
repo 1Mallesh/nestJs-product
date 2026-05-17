@@ -49,6 +49,9 @@ let ProductsController = class ProductsController {
     getVendorProducts(userId, page, limit) {
         return this.productsService.getVendorProducts(userId, page, limit);
     }
+    getFeatured(page, limit) {
+        return this.productsService.getFeatured(page, limit);
+    }
     findOne(id) {
         return this.productsService.findOne(id);
     }
@@ -148,6 +151,31 @@ _ts_decorate([
     ]),
     _ts_metadata("design:returntype", void 0)
 ], ProductsController.prototype, "getVendorProducts", null);
+_ts_decorate([
+    (0, _publicdecorator.Public)(),
+    (0, _common.Get)('featured'),
+    (0, _swagger.ApiOperation)({
+        summary: 'Get featured products'
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'page',
+        required: false,
+        type: Number
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'limit',
+        required: false,
+        type: Number
+    }),
+    _ts_param(0, (0, _common.Query)('page', new _common.DefaultValuePipe(1), _common.ParseIntPipe)),
+    _ts_param(1, (0, _common.Query)('limit', new _common.DefaultValuePipe(10), _common.ParseIntPipe)),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        Number,
+        Number
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], ProductsController.prototype, "getFeatured", null);
 _ts_decorate([
     (0, _publicdecorator.Public)(),
     (0, _common.Get)(':id'),

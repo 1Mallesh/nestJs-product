@@ -140,7 +140,7 @@ export class AdminService {
         publishedAt: isApproved ? now : null,
         approvedBy: isApproved ? adminId : null,
         approvedAt: isApproved ? now : null,
-      },
+      } as any,
     });
 
     const vendorUserId = product.vendor.userId;
