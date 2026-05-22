@@ -20,6 +20,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { UploadModule } from './upload/upload.module';
 import { ShippingModule } from './shipping/shipping.module';
+import { ContentModule } from './content/content.module';
 
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -49,6 +50,7 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
     ReviewsModule,
     UploadModule,
     ShippingModule,
+    ContentModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

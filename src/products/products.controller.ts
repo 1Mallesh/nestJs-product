@@ -64,6 +64,13 @@ export class ProductsController {
   }
 
   @Public()
+  @Get('filter-options')
+  @ApiOperation({ summary: 'Get filter options (price range, categories)' })
+  getFilterOptions() {
+    return this.productsService.getFilterOptions();
+  }
+
+  @Public()
   @Get('featured')
   @ApiOperation({ summary: 'Get featured products' })
   @ApiQuery({ name: 'page', required: false, type: Number })
