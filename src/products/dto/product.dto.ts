@@ -82,9 +82,31 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  shortDescription?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  sku?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsNumber()
   @Type(() => Number)
   price?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  comparePrice?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  costPrice?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -94,22 +116,39 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  weight?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 }
 
 export class CreateVariantDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'Size' })
   @IsString()
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Full Size' })
   @IsString()
   value: string;
 
@@ -124,4 +163,14 @@ export class CreateVariantDto {
   @IsNumber()
   @Type(() => Number)
   stock?: number;
+
+  @ApiPropertyOptional({ example: 'GAME-KEY-BLK' })
+  @IsOptional()
+  @IsString()
+  sku?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  image?: string;
 }

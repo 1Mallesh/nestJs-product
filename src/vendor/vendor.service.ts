@@ -1,8 +1,5 @@
 import {
-  Injectable,
-  ConflictException,
-  NotFoundException,
-  BadRequestException,
+  Injectable, ConflictException, NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VendorOnboardDto, UpdateVendorDto } from './dto/vendor-onboard.dto';
@@ -21,19 +18,18 @@ export class VendorService {
     const aadhaarConflict = await this.prisma.vendor.findUnique({ where: { aadhaarNumber: dto.aadhaarNumber } });
     if (aadhaarConflict) throw new ConflictException('Aadhaar number already registered');
 
-    const vendor = await this.prisma.vendor.create({
-      data: { ...dto, userId },
-    });
-
+    const vendor = await this.prisma.vendor.create({ data: { ...dto, userId } });
     return { message: 'Vendor onboarding submitted. Awaiting admin approval.', data: vendor };
   }
 
   async getProfile(userId: string) {
     const vendor = await this.prisma.vendor.findUnique({
       where: { userId },
-      include: { user: { select: { name: true, email: true, phone: true } } },
+      include: {
+        user: { select: { name: true, email: true, phone: true, avatar: true } },
+        _count: { select: { products: true, orders: true } },
+      },
     });
-
     if (!vendor) throw new NotFoundException('Vendor profile not found');
     return { message: 'Vendor profile fetched', data: vendor };
   }
@@ -42,45 +38,38 @@ export class VendorService {
     const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
     if (!vendor) throw new NotFoundException('Vendor profile not found');
 
-    const updated = await this.prisma.vendor.update({
-      where: { userId },
-      data: dto,
-    });
+    const updated = await this.prisma.vendor.update({ where: { userId }, data: dto });
     return { message: 'Profile updated', data: updated };
-  }
-
-  async getOrders(userId: string, page = 1, limit = 10) {
-    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
-    if (!vendor) throw new NotFoundException('Vendor not found');
-
-    const skip = (page - 1) * limit;
-    const [orders, total] = await Promise.all([
-      this.prisma.orderItem.findMany({
-        where: { vendorId: vendor.id },
-        include: {
-          order: { include: { user: { select: { name: true, email: true } }, address: true } },
-          product: { select: { name: true, images: true } },
-        },
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.orderItem.count({ where: { vendorId: vendor.id } }),
-    ]);
-
-    return { message: 'Orders fetched', data: { orders, total, page, limit } };
   }
 
   async getDashboard(userId: string) {
     const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
     if (!vendor) throw new NotFoundException('Vendor not found');
 
-    const [totalProducts, totalOrders, pendingOrders, totalRevenue] = await Promise.all([
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [
+      totalProducts, approvedProducts, pendingProducts,
+      totalOrders, pendingOrders, todayOrders,
+      totalRevenue, monthRevenue,
+    ] = await Promise.all([
       this.prisma.product.count({ where: { vendorId: vendor.id } }),
+      this.prisma.product.count({ where: { vendorId: vendor.id, approvalStatus: 'APPROVED' } }),
+      this.prisma.product.count({ where: { vendorId: vendor.id, approvalStatus: 'PENDING' } }),
       this.prisma.orderItem.count({ where: { vendorId: vendor.id } }),
       this.prisma.orderItem.count({ where: { vendorId: vendor.id, status: 'PENDING' } }),
+      this.prisma.orderItem.count({ where: { vendorId: vendor.id, createdAt: { gte: today } } }),
       this.prisma.orderItem.aggregate({
         where: { vendorId: vendor.id, status: 'DELIVERED' },
+        _sum: { total: true },
+      }),
+      this.prisma.orderItem.aggregate({
+        where: {
+          vendorId: vendor.id,
+          status: 'DELIVERED',
+          createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+        },
         _sum: { total: true },
       }),
     ]);
@@ -88,14 +77,90 @@ export class VendorService {
     return {
       message: 'Dashboard data',
       data: {
-        totalProducts,
-        totalOrders,
-        pendingOrders,
-        totalRevenue: totalRevenue._sum.total || 0,
-        commissionRate: vendor.commissionRate,
-        totalEarnings: vendor.totalEarnings,
+        products: { total: totalProducts, approved: approvedProducts, pending: pendingProducts },
+        orders: { total: totalOrders, pending: pendingOrders, today: todayOrders },
+        revenue: {
+          total: totalRevenue._sum.total ?? 0,
+          thisMonth: monthRevenue._sum.total ?? 0,
+        },
+        shop: {
+          commissionRate: vendor.commissionRate,
+          totalEarnings: vendor.totalEarnings,
+          approvalStatus: vendor.approvalStatus,
+        },
       },
     };
+  }
+
+  async getMyProducts(userId: string, page = 1, limit = 10, status?: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    const skip = (page - 1) * limit;
+    const where: any = { vendorId: vendor.id };
+    if (status) where.approvalStatus = status;
+
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          category: { select: { name: true, slug: true } },
+          variants: true,
+          _count: { select: { reviews: true, orderItems: true } },
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+
+    return { message: 'Products fetched', data: { products, total, page, limit } };
+  }
+
+  async getProductStats(userId: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    const [total, approved, pending, rejected] = await Promise.all([
+      this.prisma.product.count({ where: { vendorId: vendor.id } }),
+      this.prisma.product.count({ where: { vendorId: vendor.id, approvalStatus: 'APPROVED' } }),
+      this.prisma.product.count({ where: { vendorId: vendor.id, approvalStatus: 'PENDING' } }),
+      this.prisma.product.count({ where: { vendorId: vendor.id, approvalStatus: 'REJECTED' } }),
+    ]);
+
+    return { message: 'Product stats', data: { total, approved, pending, rejected } };
+  }
+
+  async getOrders(userId: string, page = 1, limit = 10, status?: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    const skip = (page - 1) * limit;
+    const where: any = { vendorId: vendor.id };
+    if (status) where.status = status;
+
+    const [orders, total] = await Promise.all([
+      this.prisma.orderItem.findMany({
+        where,
+        include: {
+          order: {
+            include: {
+              user: { select: { name: true, email: true, phone: true } },
+              address: true,
+            },
+          },
+          product: { select: { name: true, images: true, sku: true } },
+          variant: { select: { name: true, value: true } },
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.orderItem.count({ where }),
+    ]);
+
+    return { message: 'Orders fetched', data: { orders, total, page, limit } };
   }
 
   async updateOrderItemStatus(userId: string, orderItemId: string, status: string) {
@@ -112,5 +177,43 @@ export class VendorService {
       data: { status: status as any },
     });
     return { message: 'Order status updated', data: updated };
+  }
+
+  async getEarnings(userId: string) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    const commissions = await this.prisma.commission.findMany({
+      where: { vendorId: vendor.id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    return {
+      message: 'Earnings fetched',
+      data: {
+        totalEarnings: vendor.totalEarnings,
+        commissionRate: vendor.commissionRate,
+        recentCommissions: commissions,
+      },
+    };
+  }
+
+  async getSettlements(userId: string, page = 1, limit = 10) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId } });
+    if (!vendor) throw new NotFoundException('Vendor not found');
+
+    const skip = (page - 1) * limit;
+    const [settlements, total] = await Promise.all([
+      this.prisma.vendorSettlement.findMany({
+        where: { vendorId: vendor.id },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.vendorSettlement.count({ where: { vendorId: vendor.id } }),
+    ]);
+
+    return { message: 'Settlements fetched', data: { settlements, total, page, limit } };
   }
 }
