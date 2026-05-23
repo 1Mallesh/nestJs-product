@@ -77,6 +77,11 @@ export class UpdateProductDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   description?: string;
 
