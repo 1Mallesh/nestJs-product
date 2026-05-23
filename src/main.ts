@@ -3,6 +3,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as helmet from 'helmet';
+import * as path from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -20,6 +21,9 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   });
+
+  // Serve uploaded local images as static files at /uploads/...
+  app.useStaticAssets(path.join(process.cwd(), 'public'), { prefix: '/' });
 
   // Global prefix
   app.setGlobalPrefix('api/v1');
