@@ -123,9 +123,27 @@ _ts_decorate([
 _ts_decorate([
     (0, _swagger.ApiPropertyOptional)(),
     (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsUUID)(),
+    _ts_metadata("design:type", String)
+], UpdateProductDto.prototype, "categoryId", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
     (0, _classvalidator.IsString)(),
     _ts_metadata("design:type", String)
 ], UpdateProductDto.prototype, "description", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], UpdateProductDto.prototype, "shortDescription", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], UpdateProductDto.prototype, "sku", void 0);
 _ts_decorate([
     (0, _swagger.ApiPropertyOptional)(),
     (0, _classvalidator.IsOptional)(),
@@ -139,7 +157,28 @@ _ts_decorate([
     (0, _classvalidator.IsNumber)(),
     (0, _classtransformer.Type)(()=>Number),
     _ts_metadata("design:type", Number)
+], UpdateProductDto.prototype, "comparePrice", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsNumber)(),
+    (0, _classtransformer.Type)(()=>Number),
+    _ts_metadata("design:type", Number)
+], UpdateProductDto.prototype, "costPrice", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsNumber)(),
+    (0, _classtransformer.Type)(()=>Number),
+    _ts_metadata("design:type", Number)
 ], UpdateProductDto.prototype, "stock", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsNumber)(),
+    (0, _classtransformer.Type)(()=>Number),
+    _ts_metadata("design:type", Number)
+], UpdateProductDto.prototype, "weight", void 0);
 _ts_decorate([
     (0, _swagger.ApiPropertyOptional)(),
     (0, _classvalidator.IsOptional)(),
@@ -149,21 +188,40 @@ _ts_decorate([
 _ts_decorate([
     (0, _swagger.ApiPropertyOptional)(),
     (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsBoolean)(),
+    _ts_metadata("design:type", Boolean)
+], UpdateProductDto.prototype, "isFeatured", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
     (0, _classvalidator.IsArray)(),
     (0, _classvalidator.IsString)({
         each: true
     }),
     _ts_metadata("design:type", Array)
 ], UpdateProductDto.prototype, "images", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsArray)(),
+    (0, _classvalidator.IsString)({
+        each: true
+    }),
+    _ts_metadata("design:type", Array)
+], UpdateProductDto.prototype, "tags", void 0);
 let CreateVariantDto = class CreateVariantDto {
 };
 _ts_decorate([
-    (0, _swagger.ApiProperty)(),
+    (0, _swagger.ApiProperty)({
+        example: 'Size'
+    }),
     (0, _classvalidator.IsString)(),
     _ts_metadata("design:type", String)
 ], CreateVariantDto.prototype, "name", void 0);
 _ts_decorate([
-    (0, _swagger.ApiProperty)(),
+    (0, _swagger.ApiProperty)({
+        example: 'Full Size'
+    }),
     (0, _classvalidator.IsString)(),
     _ts_metadata("design:type", String)
 ], CreateVariantDto.prototype, "value", void 0);
@@ -181,5 +239,19 @@ _ts_decorate([
     (0, _classtransformer.Type)(()=>Number),
     _ts_metadata("design:type", Number)
 ], CreateVariantDto.prototype, "stock", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)({
+        example: 'GAME-KEY-BLK'
+    }),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], CreateVariantDto.prototype, "sku", void 0);
+_ts_decorate([
+    (0, _swagger.ApiPropertyOptional)(),
+    (0, _classvalidator.IsOptional)(),
+    (0, _classvalidator.IsString)(),
+    _ts_metadata("design:type", String)
+], CreateVariantDto.prototype, "image", void 0);
 
 //# sourceMappingURL=product.dto.js.map

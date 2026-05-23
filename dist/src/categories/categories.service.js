@@ -20,7 +20,7 @@ function _ts_metadata(k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 }
 let CategoriesService = class CategoriesService {
-    async create(dto) {
+    async create(dto, role = 'VENDOR') {
         const slug = dto.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         const existing = await this.prisma.category.findUnique({
             where: {
@@ -28,14 +28,17 @@ let CategoriesService = class CategoriesService {
             }
         });
         if (existing) throw new _common.ConflictException('Category already exists');
+        const isActive = role === 'ADMIN';
         const category = await this.prisma.category.create({
             data: {
                 ...dto,
-                slug
+                slug,
+                isActive
             }
         });
+        const message = isActive ? 'Category created successfully' : 'Category submitted for admin approval';
         return {
-            message: 'Category created',
+            message,
             data: category
         };
     }
@@ -56,6 +59,65 @@ let CategoriesService = class CategoriesService {
         return {
             message: 'Categories fetched',
             data: categories
+        };
+    }
+    async findAllAdmin() {
+        const categories = await this.prisma.category.findMany({
+            orderBy: [
+                {
+                    isActive: 'asc'
+                },
+                {
+                    createdAt: 'desc'
+                }
+            ],
+            include: {
+                children: true
+            }
+        });
+        return {
+            message: 'All categories fetched',
+            data: categories
+        };
+    }
+    async findBySlug(slug) {
+        const category = await this.prisma.category.findUnique({
+            where: {
+                slug
+            },
+            include: {
+                children: {
+                    where: {
+                        isActive: true
+                    }
+                },
+                products: {
+                    where: {
+                        isActive: true,
+                        approvalStatus: 'APPROVED',
+                        isPublished: true
+                    },
+                    take: 20,
+                    orderBy: {
+                        createdAt: 'desc'
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        images: true,
+                        price: true,
+                        comparePrice: true,
+                        averageRating: true,
+                        stock: true
+                    }
+                }
+            }
+        });
+        if (!category) throw new _common.NotFoundException('Category not found');
+        return {
+            message: 'Category fetched',
+            data: category
         };
     }
     async findOne(id) {

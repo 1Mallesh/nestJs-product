@@ -6,6 +6,7 @@ const _core = require("@nestjs/core");
 const _common = require("@nestjs/common");
 const _swagger = require("@nestjs/swagger");
 const _helmet = /*#__PURE__*/ _interop_require_wildcard(require("helmet"));
+const _path = /*#__PURE__*/ _interop_require_wildcard(require("path"));
 const _appmodule = require("./app.module");
 function _getRequireWildcardCache(nodeInterop) {
     if (typeof WeakMap !== "function") return null;
@@ -72,6 +73,10 @@ async function bootstrap() {
             'OPTIONS'
         ],
         credentials: true
+    });
+    // Serve uploaded local images as static files at /uploads/...
+    app.useStaticAssets(_path.join(process.cwd(), 'public'), {
+        prefix: '/'
     });
     // Global prefix
     app.setGlobalPrefix('api/v1');

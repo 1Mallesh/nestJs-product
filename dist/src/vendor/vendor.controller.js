@@ -32,23 +32,41 @@ function _ts_param(paramIndex, decorator) {
     };
 }
 let VendorController = class VendorController {
+    // ── Onboarding ────────────────────────────────────────────
     onboard(userId, dto) {
         return this.vendorService.onboard(userId, dto);
     }
+    // ── Profile ───────────────────────────────────────────────
     getProfile(userId) {
         return this.vendorService.getProfile(userId);
     }
     updateProfile(userId, dto) {
         return this.vendorService.updateProfile(userId, dto);
     }
+    // ── Dashboard ─────────────────────────────────────────────
     getDashboard(userId) {
         return this.vendorService.getDashboard(userId);
     }
-    getOrders(userId, page, limit) {
-        return this.vendorService.getOrders(userId, page, limit);
+    // ── Products ──────────────────────────────────────────────
+    getMyProducts(userId, page, limit, status) {
+        return this.vendorService.getMyProducts(userId, page, limit, status);
+    }
+    getProductStats(userId) {
+        return this.vendorService.getProductStats(userId);
+    }
+    // ── Orders ────────────────────────────────────────────────
+    getOrders(userId, page, limit, status) {
+        return this.vendorService.getOrders(userId, page, limit, status);
     }
     updateOrderStatus(userId, itemId, status) {
         return this.vendorService.updateOrderItemStatus(userId, itemId, status);
+    }
+    // ── Earnings & Settlements ────────────────────────────────
+    getEarnings(userId) {
+        return this.vendorService.getEarnings(userId);
+    }
+    getSettlements(userId, page, limit) {
+        return this.vendorService.getSettlements(userId, page, limit);
     }
     constructor(vendorService){
         this.vendorService = vendorService;
@@ -58,7 +76,7 @@ _ts_decorate([
     (0, _common.Post)('onboard'),
     (0, _rolesdecorator.Roles)(_client.Role.VENDOR, _client.Role.CUSTOMER),
     (0, _swagger.ApiOperation)({
-        summary: 'Vendor onboarding with KYC documents'
+        summary: 'Submit vendor KYC & onboarding'
     }),
     _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
     _ts_param(1, (0, _common.Body)()),
@@ -73,7 +91,7 @@ _ts_decorate([
     (0, _common.Get)('profile'),
     (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
     (0, _swagger.ApiOperation)({
-        summary: 'Get vendor profile'
+        summary: 'Get vendor profile with user info'
     }),
     _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
     _ts_metadata("design:type", Function),
@@ -86,7 +104,7 @@ _ts_decorate([
     (0, _common.Put)('profile'),
     (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
     (0, _swagger.ApiOperation)({
-        summary: 'Update vendor profile'
+        summary: 'Update shop info and bank details'
     }),
     _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
     _ts_param(1, (0, _common.Body)()),
@@ -101,7 +119,7 @@ _ts_decorate([
     (0, _common.Get)('dashboard'),
     (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
     (0, _swagger.ApiOperation)({
-        summary: 'Vendor dashboard analytics'
+        summary: 'Vendor dashboard — revenue, orders, product stats'
     }),
     _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
     _ts_metadata("design:type", Function),
@@ -111,10 +129,120 @@ _ts_decorate([
     _ts_metadata("design:returntype", void 0)
 ], VendorController.prototype, "getDashboard", null);
 _ts_decorate([
+    (0, _common.Get)('products'),
+    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
+    (0, _swagger.ApiOperation)({
+        summary: 'Get all my products with approval status'
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'page',
+        required: false
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'limit',
+        required: false
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'status',
+        required: false,
+        enum: [
+            'PENDING',
+            'APPROVED',
+            'REJECTED'
+        ]
+    }),
+    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
+    _ts_param(1, (0, _common.Query)('page', new _common.DefaultValuePipe(1), _common.ParseIntPipe)),
+    _ts_param(2, (0, _common.Query)('limit', new _common.DefaultValuePipe(10), _common.ParseIntPipe)),
+    _ts_param(3, (0, _common.Query)('status')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String,
+        Number,
+        Number,
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], VendorController.prototype, "getMyProducts", null);
+_ts_decorate([
+    (0, _common.Get)('products/stats'),
+    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
+    (0, _swagger.ApiOperation)({
+        summary: 'Product counts by approval status'
+    }),
+    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], VendorController.prototype, "getProductStats", null);
+_ts_decorate([
     (0, _common.Get)('orders'),
     (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
     (0, _swagger.ApiOperation)({
-        summary: 'Get vendor orders'
+        summary: 'Get orders for my products'
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'page',
+        required: false
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'limit',
+        required: false
+    }),
+    (0, _swagger.ApiQuery)({
+        name: 'status',
+        required: false
+    }),
+    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
+    _ts_param(1, (0, _common.Query)('page', new _common.DefaultValuePipe(1), _common.ParseIntPipe)),
+    _ts_param(2, (0, _common.Query)('limit', new _common.DefaultValuePipe(10), _common.ParseIntPipe)),
+    _ts_param(3, (0, _common.Query)('status')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String,
+        Number,
+        Number,
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], VendorController.prototype, "getOrders", null);
+_ts_decorate([
+    (0, _common.Put)('orders/:itemId/status'),
+    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
+    (0, _swagger.ApiOperation)({
+        summary: 'Update order item status (PROCESSING → SHIPPED)'
+    }),
+    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
+    _ts_param(1, (0, _common.Param)('itemId')),
+    _ts_param(2, (0, _common.Body)('status')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String,
+        String,
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], VendorController.prototype, "updateOrderStatus", null);
+_ts_decorate([
+    (0, _common.Get)('earnings'),
+    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
+    (0, _swagger.ApiOperation)({
+        summary: 'Total earnings and commission summary'
+    }),
+    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], VendorController.prototype, "getEarnings", null);
+_ts_decorate([
+    (0, _common.Get)('settlements'),
+    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
+    (0, _swagger.ApiOperation)({
+        summary: 'Settlement history (paid out amounts)'
     }),
     (0, _swagger.ApiQuery)({
         name: 'page',
@@ -134,24 +262,7 @@ _ts_decorate([
         Number
     ]),
     _ts_metadata("design:returntype", void 0)
-], VendorController.prototype, "getOrders", null);
-_ts_decorate([
-    (0, _common.Put)('orders/:itemId/status'),
-    (0, _rolesdecorator.Roles)(_client.Role.VENDOR),
-    (0, _swagger.ApiOperation)({
-        summary: 'Update order item status'
-    }),
-    _ts_param(0, (0, _currentuserdecorator.CurrentUser)('id')),
-    _ts_param(1, (0, _common.Param)('itemId')),
-    _ts_param(2, (0, _common.Body)('status')),
-    _ts_metadata("design:type", Function),
-    _ts_metadata("design:paramtypes", [
-        String,
-        String,
-        String
-    ]),
-    _ts_metadata("design:returntype", void 0)
-], VendorController.prototype, "updateOrderStatus", null);
+], VendorController.prototype, "getSettlements", null);
 VendorController = _ts_decorate([
     (0, _swagger.ApiTags)('Vendor'),
     (0, _swagger.ApiBearerAuth)('JWT-auth'),

@@ -29,6 +29,7 @@ const _notificationsmodule = require("./notifications/notifications.module");
 const _reviewsmodule = require("./reviews/reviews.module");
 const _uploadmodule = require("./upload/upload.module");
 const _shippingmodule = require("./shipping/shipping.module");
+const _contentmodule = require("./content/content.module");
 const _jwtauthguard = require("./auth/guards/jwt-auth.guard");
 const _rolesguard = require("./common/guards/roles.guard");
 const _httpexceptionfilter = require("./common/filters/http-exception.filter");
@@ -75,7 +76,8 @@ AppModule = _ts_decorate([
             _notificationsmodule.NotificationsModule,
             _reviewsmodule.ReviewsModule,
             _uploadmodule.UploadModule,
-            _shippingmodule.ShippingModule
+            _shippingmodule.ShippingModule,
+            _contentmodule.ContentModule
         ],
         providers: [
             {

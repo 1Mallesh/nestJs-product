@@ -49,6 +49,9 @@ let ProductsController = class ProductsController {
     getVendorProducts(userId, page, limit) {
         return this.productsService.getVendorProducts(userId, page, limit);
     }
+    getFilterOptions() {
+        return this.productsService.getFilterOptions();
+    }
     getFeatured(page, limit) {
         return this.productsService.getFeatured(page, limit);
     }
@@ -151,6 +154,16 @@ _ts_decorate([
     ]),
     _ts_metadata("design:returntype", void 0)
 ], ProductsController.prototype, "getVendorProducts", null);
+_ts_decorate([
+    (0, _publicdecorator.Public)(),
+    (0, _common.Get)('filter-options'),
+    (0, _swagger.ApiOperation)({
+        summary: 'Get filter options (price range, categories)'
+    }),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", []),
+    _ts_metadata("design:returntype", void 0)
+], ProductsController.prototype, "getFilterOptions", null);
 _ts_decorate([
     (0, _publicdecorator.Public)(),
     (0, _common.Get)('featured'),

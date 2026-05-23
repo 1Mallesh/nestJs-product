@@ -16,6 +16,7 @@ const _categorydto = require("./dto/category.dto");
 const _jwtauthguard = require("../auth/guards/jwt-auth.guard");
 const _rolesguard = require("../common/guards/roles.guard");
 const _rolesdecorator = require("../common/decorators/roles.decorator");
+const _currentuserdecorator = require("../common/decorators/current-user.decorator");
 const _publicdecorator = require("../common/decorators/public.decorator");
 function _ts_decorate(decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -32,11 +33,17 @@ function _ts_param(paramIndex, decorator) {
     };
 }
 let CategoriesController = class CategoriesController {
-    create(dto) {
-        return this.categoriesService.create(dto);
+    create(dto, role) {
+        return this.categoriesService.create(dto, role);
     }
     findAll() {
         return this.categoriesService.findAll();
+    }
+    findAllAdmin() {
+        return this.categoriesService.findAllAdmin();
+    }
+    findBySlug(slug) {
+        return this.categoriesService.findBySlug(slug);
     }
     findOne(id) {
         return this.categoriesService.findOne(id);
@@ -55,14 +62,16 @@ _ts_decorate([
     (0, _common.Post)(),
     (0, _swagger.ApiBearerAuth)('JWT-auth'),
     (0, _common.UseGuards)(_jwtauthguard.JwtAuthGuard, _rolesguard.RolesGuard),
-    (0, _rolesdecorator.Roles)(_client.Role.ADMIN),
+    (0, _rolesdecorator.Roles)(_client.Role.ADMIN, _client.Role.VENDOR),
     (0, _swagger.ApiOperation)({
-        summary: 'Create category (Admin)'
+        summary: 'Create category (Admin / Vendor)'
     }),
     _ts_param(0, (0, _common.Body)()),
+    _ts_param(1, (0, _currentuserdecorator.CurrentUser)('role')),
     _ts_metadata("design:type", Function),
     _ts_metadata("design:paramtypes", [
-        typeof _categorydto.CreateCategoryDto === "undefined" ? Object : _categorydto.CreateCategoryDto
+        typeof _categorydto.CreateCategoryDto === "undefined" ? Object : _categorydto.CreateCategoryDto,
+        String
     ]),
     _ts_metadata("design:returntype", void 0)
 ], CategoriesController.prototype, "create", null);
@@ -70,12 +79,37 @@ _ts_decorate([
     (0, _publicdecorator.Public)(),
     (0, _common.Get)(),
     (0, _swagger.ApiOperation)({
-        summary: 'Get all categories'
+        summary: 'Get all active categories (public)'
     }),
     _ts_metadata("design:type", Function),
     _ts_metadata("design:paramtypes", []),
     _ts_metadata("design:returntype", void 0)
 ], CategoriesController.prototype, "findAll", null);
+_ts_decorate([
+    (0, _common.Get)('all'),
+    (0, _swagger.ApiBearerAuth)('JWT-auth'),
+    (0, _common.UseGuards)(_jwtauthguard.JwtAuthGuard, _rolesguard.RolesGuard),
+    (0, _rolesdecorator.Roles)(_client.Role.ADMIN),
+    (0, _swagger.ApiOperation)({
+        summary: 'Get all categories including pending (Admin)'
+    }),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", []),
+    _ts_metadata("design:returntype", void 0)
+], CategoriesController.prototype, "findAllAdmin", null);
+_ts_decorate([
+    (0, _publicdecorator.Public)(),
+    (0, _common.Get)('slug/:slug'),
+    (0, _swagger.ApiOperation)({
+        summary: 'Get category by slug'
+    }),
+    _ts_param(0, (0, _common.Param)('slug')),
+    _ts_metadata("design:type", Function),
+    _ts_metadata("design:paramtypes", [
+        String
+    ]),
+    _ts_metadata("design:returntype", void 0)
+], CategoriesController.prototype, "findBySlug", null);
 _ts_decorate([
     (0, _publicdecorator.Public)(),
     (0, _common.Get)(':id'),
@@ -95,7 +129,7 @@ _ts_decorate([
     (0, _common.UseGuards)(_jwtauthguard.JwtAuthGuard, _rolesguard.RolesGuard),
     (0, _rolesdecorator.Roles)(_client.Role.ADMIN),
     (0, _swagger.ApiOperation)({
-        summary: 'Update category (Admin)'
+        summary: 'Update category (Admin only)'
     }),
     _ts_param(0, (0, _common.Param)('id')),
     _ts_param(1, (0, _common.Body)()),
@@ -112,7 +146,7 @@ _ts_decorate([
     (0, _common.UseGuards)(_jwtauthguard.JwtAuthGuard, _rolesguard.RolesGuard),
     (0, _rolesdecorator.Roles)(_client.Role.ADMIN),
     (0, _swagger.ApiOperation)({
-        summary: 'Delete category (Admin)'
+        summary: 'Delete/deactivate category (Admin only)'
     }),
     _ts_param(0, (0, _common.Param)('id')),
     _ts_metadata("design:type", Function),

@@ -365,6 +365,60 @@ let ProductsService = class ProductsService {
             }
         };
     }
+    async getFilterOptions() {
+        const where = {
+            isActive: true,
+            approvalStatus: 'APPROVED',
+            isPublished: true
+        };
+        const [priceAgg, categories] = await Promise.all([
+            this.prisma.product.aggregate({
+                where,
+                _min: {
+                    price: true
+                },
+                _max: {
+                    price: true
+                }
+            }),
+            this.prisma.category.findMany({
+                where: {
+                    isActive: true
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    _count: {
+                        select: {
+                            products: {
+                                where
+                            }
+                        }
+                    }
+                },
+                orderBy: {
+                    name: 'asc'
+                }
+            })
+        ]);
+        return {
+            success: true,
+            message: 'Filter options fetched',
+            data: {
+                priceRange: {
+                    min: priceAgg._min.price ?? 0,
+                    max: priceAgg._max.price ?? 0
+                },
+                categories: categories.map((c)=>({
+                        id: c.id,
+                        name: c.name,
+                        slug: c.slug,
+                        productCount: c._count.products
+                    }))
+            }
+        };
+    }
     constructor(prisma, notifications, trackingGateway){
         this.prisma = prisma;
         this.notifications = notifications;
